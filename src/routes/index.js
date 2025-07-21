@@ -8,6 +8,7 @@ import policyRoutes from './policyRoutes.js';
 import auditRoutes from './auditRoutes.js';
 import integrationRoutes from './integrationRoutes.js';
 import authRoutes from './authRoutes.js';
+import dashboardRoutes from './dashboardRoutes.js';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.use('/policies', policyRoutes);
 router.use('/audit', auditRoutes);
 router.use('/integrations', integrationRoutes);
 router.use('/auth', authRoutes);
+router.use('/dashboard', dashboardRoutes);
 // TODO: add credential, JIT access, discovery, session, policy routes
 
 export default router; 

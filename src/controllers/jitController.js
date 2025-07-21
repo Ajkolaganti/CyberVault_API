@@ -2,14 +2,32 @@ import * as jitService from '../services/jitService.js';
 
 export async function request(req, res, next) {
   try {
-    const { resource, durationMinutes } = req.body;
+    const { resource, system, reason, durationMinutes } = req.body;
+    
+    // Additional validation
+    if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+      return res.status(400).json({
+        error: 'Validation failed',
+        message: 'Reason is required and must be a non-empty string'
+      });
+    }
+    
     const session = await jitService.requestJITAccess({
       userId: req.user.id,
       resource,
+      system,
+      reason: reason.trim(),
       durationMinutes: durationMinutes || 60, // default 1hr
     });
     res.status(201).json(session);
   } catch (err) {
+    // Handle specific database constraint errors
+    if (err.message && err.message.includes('business_justification')) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'Business justification reason is required'
+      });
+    }
     next(err);
   }
 }

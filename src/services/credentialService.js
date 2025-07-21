@@ -1,4 +1,4 @@
-import supabase, { supabaseAdmin } from '../utils/supabaseClient.js';
+import { supabaseAdmin } from '../utils/supabaseClient.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
 
 const TABLE = 'credentials';
@@ -17,7 +17,7 @@ export async function createCredential({ userId, type, name, value }) {
 }
 
 export async function getCredentials({ userId, role }) {
-  let query = supabase.from(TABLE).select('*');
+  let query = supabaseAdmin.from(TABLE).select('*');
   if (role === 'User') {
     query = query.eq('user_id', userId);
   }
@@ -27,7 +27,7 @@ export async function getCredentials({ userId, role }) {
 }
 
 export async function getCredentialById({ id, userId, role }) {
-  let query = supabase.from(TABLE).select('*').eq('id', id).single();
+  let query = supabaseAdmin.from(TABLE).select('*').eq('id', id).single();
   if (role === 'User') {
     query = query.eq('user_id', userId);
   }

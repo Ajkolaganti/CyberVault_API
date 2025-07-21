@@ -14,7 +14,13 @@
   "jit": {
     "request": "POST /api/v1/jit",
     "list": "GET /api/v1/jit",
-    "revoke": "POST /api/v1/jit/:id/revoke"
+    "revoke": "POST /api/v1/jit/:id/revoke",
+    "requestBody": {
+      "resource": "string (required) - Resource name",
+      "system": "string (optional) - System/Resource being accessed", 
+      "reason": "string (required) - Business reason for access",
+      "durationMinutes": "number (optional) - Duration in minutes (1-480, default 60)"
+    }
   },
   "discovery": {
     "list": "GET /api/v1/discovery?source={windows|linux|aws|azure}",
@@ -39,6 +45,10 @@
   },
   "audit": {
     "list": "GET /api/v1/audit"
+  },
+  "dashboard": {
+    "stats": "GET /api/v1/dashboard/stats",
+    "alerts": "GET /api/v1/dashboard/alerts"
   },
   "integrations": {
     "list": "GET /api/v1/integrations",

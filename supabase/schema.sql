@@ -41,6 +41,8 @@ create table if not exists public.jit_sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete cascade,
   resource text not null,
+  system text,
+  business_justification text not null default '',
   expires_at timestamp with time zone not null,
   active boolean default true,
   created_at timestamp with time zone default now()
