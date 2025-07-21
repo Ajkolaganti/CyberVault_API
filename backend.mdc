@@ -1,0 +1,38 @@
+---
+alwaysApply: true
+---
+---
+description: "Node.js + Express.js backend development standards with Supabase"
+globs:
+  - "src/backend/**/*.js"
+  - "src/backend/**/*.ts"
+alwaysApply: true
+---
+
+# Tech Stack
+- Use Node.js + Express.js
+- Use Supabase client for DB and auth
+- Use ES Modules (`import`/`export`)
+
+# Security & Best Practices
+- Validate all inputs (e.g., `express-validator`, `zod`)
+- Use Helmet, rate-limit, CORS middleware
+- Hash with bcrypt, sign JWT with strong secret
+
+# Project Structure
+- Controllers in `controllers/`
+- Services in `services/`
+- Routes in `routes/`
+- Middlewares in `middlewares/`
+- Utils in `utils/`
+
+# Error Handling
+- Centralized error handler
+- Log with winston or pino
+
+# Testing
+- Write unit tests for controllers/services
+- Add integration tests for API endpoints
+
+# Documentation
+- Document routes using Swagger or JSDoc

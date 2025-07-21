@@ -1,0 +1,7 @@
+# Backend Standards
+- Use Node.js + Express + Supabase for all server APIs.
+- Enforce secure practices: input validation, error handling, JWT auth.
+- Maintain clean separation: routes → controllers → services → utils.
+- Write tests for business logic and API endpoints.
+- Use logging (winston/pino) and environment config via `.env`.
+- Document REST APIs (Swagger, Postman).

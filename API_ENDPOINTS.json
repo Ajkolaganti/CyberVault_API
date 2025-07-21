@@ -1,0 +1,49 @@
+{
+  "BASE_URL": "/api/v1",
+  "auth": {
+    "register": "POST /api/v1/auth/register",
+    "login": "POST /api/v1/auth/login"
+  },
+  "credentials": {
+    "create": "POST /api/v1/credentials",
+    "list": "GET /api/v1/credentials",
+    "get": "GET /api/v1/credentials/:id",
+    "update": "PUT /api/v1/credentials/:id",
+    "delete": "DELETE /api/v1/credentials/:id"
+  },
+  "jit": {
+    "request": "POST /api/v1/jit",
+    "list": "GET /api/v1/jit",
+    "revoke": "POST /api/v1/jit/:id/revoke"
+  },
+  "discovery": {
+    "list": "GET /api/v1/discovery?source={windows|linux|aws|azure}",
+    "get": "GET /api/v1/discovery/:id"
+  },
+  "sessions": {
+    "start": "POST /api/v1/sessions",
+    "list": "GET /api/v1/sessions",
+    "end": "POST /api/v1/sessions/:id/end",
+    "addLog": "POST /api/v1/sessions/:id/logs",
+    "getLogs": "GET /api/v1/sessions/:id/logs"
+  },
+  "roles": {
+    "list": "GET /api/v1/roles",
+    "update": "PATCH /api/v1/roles/:id"
+  },
+  "policies": {
+    "list": "GET /api/v1/policies",
+    "create": "POST /api/v1/policies",
+    "update": "PUT /api/v1/policies/:id",
+    "delete": "DELETE /api/v1/policies/:id"
+  },
+  "audit": {
+    "list": "GET /api/v1/audit"
+  },
+  "integrations": {
+    "list": "GET /api/v1/integrations",
+    "create": "POST /api/v1/integrations",
+    "update": "PUT /api/v1/integrations/:id",
+    "delete": "DELETE /api/v1/integrations/:id"
+  }
+} 
