@@ -22,10 +22,22 @@ const app = express();
 app.use(helmet());
 
 // CORS configuration
+// Allow multiple origins including your frontend
+const allowedOrigins = [
+  'http://localhost:5173',      // Vite dev server
+  'http://localhost:3000',      // Alternative React dev server
+  'http://127.0.0.1:5173',     // Alternative localhost
+  'https://cyber-vault-ui.vercel.app', // Your production frontend URL
+  // Additional development origins
+  'http://localhost:3001',      // Additional dev server
+  'http://localhost:5174',      // Additional Vite dev server
+  'http://127.0.0.1:3000',     // Alternative localhost
+];
+
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL?.split(',') || ['https://yourdomain.com']
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173'],
+    ? process.env.FRONTEND_URL?.split(',') || allowedOrigins.filter(origin => origin.startsWith('https://'))
+    : allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
