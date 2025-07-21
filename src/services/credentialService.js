@@ -17,13 +17,35 @@ export async function createCredential({ userId, type, name, value }) {
 }
 
 export async function getCredentials({ userId, role }) {
+  console.log(`Fetching credentials for userId: ${userId}, role: ${role}`);
+  
   let query = supabaseAdmin.from(TABLE).select('*');
   if (role === 'User') {
     query = query.eq('user_id', userId);
   }
+  
   const { data, error } = await query;
-  if (error) throw error;
-  return data.map((cred) => ({ ...cred, value: decrypt(cred.value) }));
+  
+  if (error) {
+    console.error('Database error fetching credentials:', error);
+    throw error;
+  }
+  
+  console.log(`Found ${data ? data.length : 0} credentials in database`);
+  
+  if (!data || data.length === 0) {
+    return [];
+  }
+  
+  try {
+    return data.map((cred) => ({ 
+      ...cred, 
+      value: decrypt(cred.value) 
+    }));
+  } catch (decryptError) {
+    console.error('Decryption error:', decryptError);
+    throw new Error('Failed to decrypt credential values');
+  }
 }
 
 export async function getCredentialById({ id, userId, role }) {

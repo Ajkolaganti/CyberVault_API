@@ -18,12 +18,30 @@ export async function create(req, res, next) {
 
 export async function list(req, res, next) {
   try {
+    console.log('Credentials list request - User info:', {
+      id: req.user.id,
+      email: req.user.email,
+      role: req.user.role
+    });
+    
     const credentials = await credentialService.getCredentials({
       userId: req.user.id,
       role: req.user.role,
     });
-    res.json(credentials);
+    
+    console.log(`Returning ${credentials.length} credentials to frontend`);
+    
+    // Send response with count for frontend compatibility
+    const response = {
+      data: credentials,
+      count: credentials.length,
+      total: credentials.length
+    };
+    
+    console.log('Credentials response:', JSON.stringify(response, null, 2));
+    res.json(response);
   } catch (err) {
+    console.error('Error fetching credentials:', err);
     next(err);
   }
 }

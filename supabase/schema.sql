@@ -22,7 +22,7 @@ create policy "Profiles: Admin full" on public.profiles
 create table if not exists public.credentials (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete cascade,
-  type text not null check (type in ('password','ssh','api_token','certificate')),
+  type text not null check (type in ('password','ssh','api_token','certificate','database')),
   name text not null,
   value text not null, -- AES-256 encrypted blob
   created_at timestamp with time zone default now(),
