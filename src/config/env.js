@@ -10,4 +10,6 @@ export const {
   ENCRYPTION_KEY,
   ENCRYPTION_IV,
   PORT,
+  FRONTEND_URL,
+  NODE_ENV,
 } = process.env; 
