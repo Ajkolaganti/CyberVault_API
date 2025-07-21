@@ -13,6 +13,7 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
 import { auditLogger } from './middlewares/auditLogger.js';
 import { requestLogger } from './middlewares/requestLogger.js';
+import { corsLogger, securityLogger } from './middlewares/endpointLogger.js';
 
 dotenv.config();
 
@@ -45,10 +46,29 @@ const corsOptions = {
   maxAge: 86400 // 24 hours
 };
 
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: (origin, callback) => {
+    const whitelist = process.env.NODE_ENV === 'production'
+      ? (process.env.FRONTEND_URL?.split(',') || [])
+      : allowedOrigins;
+    if (!origin || whitelist.includes(origin)) {
+      callback(null, origin || '');
+    } else {
+      callback(new Error('CORS not allowed by rules'), false);
+    }
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With','Accept','Origin'],
+  exposedHeaders: ['X-Total-Count','X-Page-Count'],
+  maxAge: 86400
+}));
 
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions));
+
+// Trust proxy for accurate IP addresses
+app.set('trust proxy', true);
 
 app.use(express.json({ limit: '10kb' }));
 
@@ -68,6 +88,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 // Routes
 app.use(requestLogger);
+app.use(corsLogger);
+app.use(securityLogger);
 app.use('/api/v1', routes);
 app.use(auditLogger);
 
