@@ -4,6 +4,41 @@
     "register": "POST /api/v1/auth/register",
     "login": "POST /api/v1/auth/login"
   },
+  "accounts": {
+    "create": "POST /api/v1/accounts",
+    "list": "GET /api/v1/accounts",
+    "get": "GET /api/v1/accounts/:id",
+    "update": "PUT /api/v1/accounts/:id",
+    "delete": "DELETE /api/v1/accounts/:id",
+    "rotate": "POST /api/v1/accounts/:id/rotate",
+    "history": "GET /api/v1/accounts/:id/history",
+    "createBody": {
+      "system_type": "string (required) - Type of system (Windows, Linux, etc.)",
+      "hostname_ip": "string (required) - Hostname or IP address",
+      "username": "string (required) - Account username",
+      "password": "string (required) - Account password",
+      "rotation_policy": "object (optional) - JSON configuration for rotation policy",
+      "account_description": "string (optional) - Description of the account",
+      "tags": "array (optional) - Tags associated with the account"
+    },
+    "updateBody": {
+      "system_type": "string (optional) - Type of system",
+      "hostname_ip": "string (optional) - Hostname or IP address",
+      "username": "string (optional) - Account username",
+      "password": "string (optional) - Account password",
+      "rotation_policy": "object (optional) - JSON configuration for rotation policy",
+      "account_description": "string (optional) - Description of the account",
+      "tags": "array (optional) - Tags for classification",
+      "status": "string (optional) - Status (active, inactive, expired, rotation_required)"
+    },
+    "rotateBody": {
+      "rotationType": "string (optional) - Rotation type (manual, automatic)"
+    },
+    "responseFields": {
+      "owner_email": "string - Email of the account owner",
+      "rotation_status": "string - Indication of password rotation status"
+    }
+  },
   "credentials": {
     "create": "POST /api/v1/credentials",
     "list": "GET /api/v1/credentials",
