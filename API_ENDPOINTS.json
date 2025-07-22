@@ -13,10 +13,15 @@
     "rotate": "POST /api/v1/accounts/:id/rotate",
     "history": "GET /api/v1/accounts/:id/history",
     "createBody": {
-      "system_type": "string (required) - Type of system (Windows, Linux, etc.)",
+      "system_type": "string (required) - Type of system (Windows, Linux, Database, Cloud, Network, Application, Security, Directory, Website, Operating System, Certificates, Misc, Oracle DB, AWS, Azure)",
       "hostname_ip": "string (required) - Hostname or IP address",
+      "port": "integer (optional) - Port number (e.g., 22 for SSH, 3389 for RDP, 1433 for SQL)",
       "username": "string (required) - Account username",
-      "password": "string (required) - Account password",
+      "password": "string (required) - Account password/secret",
+      "connection_method": "string (optional) - Connection method (RDP, SSH, SQL, HTTPS, HTTP, SFTP, Telnet, VNC, PowerShell, WinRM, Custom)",
+      "platform_id": "string (optional) - CyberArk platform policy (e.g., WinDomain, UnixSSH, Oracle)",
+      "account_type": "string (optional) - Account type (Local, Domain, Service, Application, Database, System, Shared, Emergency)",
+      "safe_id": "string (optional) - UUID of safe where account is stored",
       "rotation_policy": "object (optional) - JSON configuration for rotation policy",
       "account_description": "string (optional) - Description of the account",
       "tags": "array (optional) - Tags associated with the account"
@@ -24,8 +29,13 @@
     "updateBody": {
       "system_type": "string (optional) - Type of system",
       "hostname_ip": "string (optional) - Hostname or IP address",
+      "port": "integer (optional) - Port number",
       "username": "string (optional) - Account username",
-      "password": "string (optional) - Account password",
+      "password": "string (optional) - Account password/secret",
+      "connection_method": "string (optional) - Connection method",
+      "platform_id": "string (optional) - Platform policy identifier",
+      "account_type": "string (optional) - Account type",
+      "safe_id": "string (optional) - Safe UUID",
       "rotation_policy": "object (optional) - JSON configuration for rotation policy",
       "account_description": "string (optional) - Description of the account",
       "tags": "array (optional) - Tags for classification",
@@ -36,7 +46,56 @@
     },
     "responseFields": {
       "owner_email": "string - Email of the account owner",
-      "rotation_status": "string - Indication of password rotation status"
+      "rotation_status": "string - Indication of password rotation status",
+      "decrypted_password": "string - Decrypted password (only in responses)",
+      "port": "integer - Port number for connection",
+      "connection_method": "string - Method to connect to system",
+      "platform_id": "string - Platform policy identifier",
+      "account_type": "string - Type of account",
+      "safe_id": "string - UUID of associated safe"
+    }
+  },
+  "safes": {
+    "create": "POST /api/v1/safes",
+    "list": "GET /api/v1/safes",
+    "get": "GET /api/v1/safes/:id",
+    "update": "PUT /api/v1/safes/:id",
+    "delete": "DELETE /api/v1/safes/:id",
+    "statistics": "GET /api/v1/safes/statistics",
+    "grantPermission": "POST /api/v1/safes/:id/permissions",
+    "listPermissions": "GET /api/v1/safes/:id/permissions",
+    "revokePermission": "DELETE /api/v1/safes/:id/permissions/:permissionId",
+    "listActivity": "GET /api/v1/safes/:id/activity",
+    "listAccounts": "GET /api/v1/safes/:id/accounts",
+    "moveAccounts": "POST /api/v1/safes/move-accounts",
+    "createBody": {
+      "name": "string (required) - Safe name (3-100 chars)",
+      "description": "string (optional) - Safe description (max 500 chars)",
+      "safe_type": "string (optional) - Type: standard, shared, department, application",
+      "access_level": "string (optional) - Level: private, team, department, public",
+      "settings": "object (optional) - JSON configuration for safe settings"
+    },
+    "updateBody": {
+      "name": "string (optional) - Safe name",
+      "description": "string (optional) - Safe description",
+      "safe_type": "string (optional) - Safe type",
+      "access_level": "string (optional) - Access level",
+      "status": "string (optional) - Status: active, inactive, archived",
+      "settings": "object (optional) - Safe settings"
+    },
+    "permissionBody": {
+      "userId": "string (required) - UUID of user to grant permission",
+      "permission_level": "string (required) - Level: read, write, admin, owner"
+    },
+    "moveAccountsBody": {
+      "sourceId": "string (required) - Source safe UUID",
+      "targetId": "string (required) - Target safe UUID",
+      "accountIds": "array (required) - Array of account UUIDs to move"
+    },
+    "responseFields": {
+      "owner_email": "string - Email of the safe owner",
+      "account_count": "number - Number of accounts in the safe",
+      "permission_count": "number - Number of users with permissions"
     }
   },
   "credentials": {

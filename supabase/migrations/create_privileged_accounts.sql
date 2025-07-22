@@ -8,10 +8,15 @@ ALTER TABLE IF EXISTS public.accounts RENAME TO discovered_accounts;
 CREATE TABLE IF NOT EXISTS public.privileged_accounts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE,
-  system_type text NOT NULL CHECK (system_type IN ('Windows', 'Linux', 'Database', 'Cloud', 'Network', 'Application', 'Security', 'Directory', 'Website', 'Operating System', 'Certificates', 'Misc')),
+  safe_id uuid REFERENCES public.safes(id) ON DELETE SET NULL, -- Reference to safe where account is stored
+  system_type text NOT NULL CHECK (system_type IN ('Windows', 'Linux', 'Database', 'Cloud', 'Network', 'Application', 'Security', 'Directory', 'Website', 'Operating System', 'Certificates', 'Misc', 'Oracle DB', 'AWS', 'Azure')),
   hostname_ip text NOT NULL,
+  port integer, -- Optional port number (e.g., 22 for SSH, 3389 for RDP)
   username text NOT NULL,
-  encrypted_password text NOT NULL, -- AES-256 encrypted
+  encrypted_password text NOT NULL, -- AES-256 encrypted password/secret
+  connection_method text CHECK (connection_method IN ('RDP', 'SSH', 'SQL', 'HTTPS', 'HTTP', 'SFTP', 'Telnet', 'VNC', 'PowerShell', 'WinRM', 'Custom')), -- Connection method
+  platform_id text, -- CyberArk platform policy (e.g., WinDomain, UnixSSH, Oracle)
+  account_type text CHECK (account_type IN ('Local', 'Domain', 'Service', 'Application', 'Database', 'System', 'Shared', 'Emergency')), -- Account type
   account_description text,
   tags jsonb DEFAULT '[]'::jsonb,
   rotation_policy jsonb DEFAULT '{

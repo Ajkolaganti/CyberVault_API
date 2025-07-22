@@ -6,30 +6,174 @@ import crypto from 'crypto';
 const TABLE = 'privileged_accounts';
 const HISTORY_TABLE = 'account_rotation_history';
 
-export async function createAccount({ ownerId, system_type, hostname_ip, username, password, rotation_policy }) {
-  const encryptedPassword = encrypt(password);
-  const account = {
-    id: uuidv4(),
-    owner_id: ownerId,
-    system_type,
-    hostname_ip,
-    username,
-    encrypted_password: encryptedPassword,
-    rotation_policy,
-    status: 'active',
-    created_at: new Date(),
-  };
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert([account])
-    .single();
-
-  if (error) throw error;
-  return data;
+export async function createAccount({ ownerId, system_type, hostname_ip, port, username, password, connection_method, platform_id, account_type, rotation_policy, safe_id }) {
+  console.log('=== Starting Account Creation Process ===');
+  
+  try {
+    // Log input parameters (without sensitive data)
+    console.log('Account creation parameters:', {
+      ownerId: ownerId || 'MISSING',
+      system_type: system_type || 'MISSING',
+      hostname_ip: hostname_ip || 'MISSING',
+      port: port || 'NOT_PROVIDED',
+      username: username || 'MISSING',
+      password_provided: password ? 'YES' : 'NO',
+      password_length: password ? password.length : 0,
+      connection_method: connection_method || 'NOT_PROVIDED',
+      platform_id: platform_id || 'NOT_PROVIDED',
+      account_type: account_type || 'NOT_PROVIDED',
+      safe_id: safe_id || 'NOT_PROVIDED',
+      rotation_policy_provided: rotation_policy ? 'YES' : 'NO'
+    });
+    
+    // Validate required fields
+    if (!ownerId) {
+      throw new Error('Owner ID is required');
+    }
+    if (!system_type) {
+      throw new Error('System type is required');
+    }
+    if (!hostname_ip) {
+      throw new Error('Hostname/IP is required');
+    }
+    if (!username) {
+      throw new Error('Username is required');
+    }
+    if (!password) {
+      throw new Error('Password is required');
+    }
+    
+    console.log('✓ Input validation passed');
+    
+    // Validate safe_id if provided
+    if (safe_id) {
+      console.log(`Validating safe_id: ${safe_id}`);
+      const { data: safeExists, error: safeError } = await supabase
+        .from('safes')
+        .select('id, name')
+        .eq('id', safe_id)
+        .single();
+        
+      if (safeError) {
+        console.error('Safe validation error:', safeError);
+        throw new Error(`Invalid safe ID: ${safeError.message}`);
+      }
+      
+      if (!safeExists) {
+        throw new Error(`Safe with ID ${safe_id} does not exist`);
+      }
+      
+      console.log(`✓ Safe validation passed: ${safeExists.name}`);
+    }
+    
+    // Encrypt password
+    console.log('Encrypting password...');
+    let encryptedPassword;
+    try {
+      encryptedPassword = encrypt(password);
+      console.log('✓ Password encryption successful');
+    } catch (encryptError) {
+      console.error('Password encryption failed:', encryptError);
+      throw new Error(`Password encryption failed: ${encryptError.message}`);
+    }
+    
+    // Prepare account object
+    const accountId = uuidv4();
+    const account = {
+      id: accountId,
+      owner_id: ownerId,
+      system_type,
+      hostname_ip,
+      port: port || null,
+      username,
+      encrypted_password: encryptedPassword,
+      connection_method: connection_method || null,
+      platform_id: platform_id || null,
+      account_type: account_type || null,
+      rotation_policy: rotation_policy || {
+        enabled: false,
+        interval_days: 90,
+        complexity_requirements: {
+          min_length: 12,
+          require_uppercase: true,
+          require_lowercase: true,
+          require_numbers: true,
+          require_symbols: true
+        },
+        notification_days: 7,
+        auto_rotate: false
+      },
+      safe_id: safe_id || null,
+      status: 'active',
+      created_at: new Date(),
+    };
+    
+    console.log('Account object prepared:', {
+      id: account.id,
+      owner_id: account.owner_id,
+      system_type: account.system_type,
+      hostname_ip: account.hostname_ip,
+      port: account.port,
+      username: account.username,
+      encrypted_password_length: account.encrypted_password ? account.encrypted_password.length : 0,
+      connection_method: account.connection_method,
+      platform_id: account.platform_id,
+      account_type: account.account_type,
+      safe_id: account.safe_id,
+      status: account.status
+    });
+    
+    // Insert into database
+    console.log('Inserting account into database...');
+    const { data, error } = await supabase
+      .from(TABLE)
+      .insert([account])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Database insertion error:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      
+      // Provide user-friendly error messages
+      if (error.code === '23505') {
+        throw new Error('An account with this combination already exists');
+      } else if (error.code === '23503') {
+        throw new Error('Referenced resource (safe or owner) does not exist');
+      } else if (error.code === '23514') {
+        throw new Error('Invalid value provided for one of the fields. Please check your input.');
+      } else {
+        throw new Error(`Database error: ${error.message}`);
+      }
+    }
+    
+    console.log('✓ Account successfully created:', {
+      id: data.id,
+      system_type: data.system_type,
+      hostname_ip: data.hostname_ip,
+      username: data.username
+    });
+    
+    console.log('=== Account Creation Process Completed ===');
+    return data;
+    
+  } catch (error) {
+    console.error('=== Account Creation Failed ===');
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    console.error('=== End Error Details ===');
+    throw error;
+  }
 }
 
-export async function listAccounts({ ownerId, role, system_type, status, limit = 50, offset = 0 }) {
+export async function listAccounts({ ownerId, role, system_type, status, safe_id, limit = 50, offset = 0 }) {
   console.log(`Fetching accounts for ownerId: ${ownerId}, role: ${role}`);
   
   let query = supabase
@@ -49,6 +193,10 @@ export async function listAccounts({ ownerId, role, system_type, status, limit =
   
   if (status) {
     query = query.eq('status', status);
+  }
+  
+  if (safe_id) {
+    query = query.eq('safe_id', safe_id);
   }
 
   const { data, error } = await query;
