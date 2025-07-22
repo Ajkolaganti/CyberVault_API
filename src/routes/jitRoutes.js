@@ -36,7 +36,20 @@ router.post(
   jitController.request
 );
 
+// List sessions with optional filtering
 router.get('/', jitController.list);
+
+// Get individual session
+router.get('/:id', jitController.getById);
+
+// Session management
 router.post('/:id/revoke', jitController.revoke);
+router.post('/:id/extend', [
+  body('additionalMinutes').isInt({ min: 1, max: 480 }).withMessage('Additional minutes must be between 1 and 480')
+], jitController.extend);
+
+// Statistics and admin endpoints
+router.get('/admin/statistics', jitController.getStatistics);
+router.post('/admin/cleanup', jitController.manualCleanup);
 
 export default router; 

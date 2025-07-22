@@ -14,6 +14,7 @@ import logger from './utils/logger.js';
 import { auditLogger } from './middlewares/auditLogger.js';
 import { requestLogger } from './middlewares/requestLogger.js';
 import { corsLogger, securityLogger } from './middlewares/endpointLogger.js';
+import jitCleanupJob from './jobs/jitCleanupJob.js';
 
 dotenv.config();
 
@@ -96,7 +97,11 @@ app.use(auditLogger);
 // Error handler
 app.use(errorHandler);
 
+// Start the JIT cleanup background job
+jitCleanupJob.start();
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   logger.info(`Server listening on port ${PORT}`);
-}); 
+  logger.info('JIT cleanup background job started');
+});

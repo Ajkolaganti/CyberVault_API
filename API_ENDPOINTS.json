@@ -13,13 +13,30 @@
   },
   "jit": {
     "request": "POST /api/v1/jit",
-    "list": "GET /api/v1/jit",
+    "list": "GET /api/v1/jit?status={active|history|expired|expiring_soon|all}&limit=50&offset=0",
+    "getById": "GET /api/v1/jit/:id",
     "revoke": "POST /api/v1/jit/:id/revoke",
+    "extend": "POST /api/v1/jit/:id/extend",
+    "statistics": "GET /api/v1/jit/admin/statistics",
+    "manualCleanup": "POST /api/v1/jit/admin/cleanup",
     "requestBody": {
       "resource": "string (required) - Resource name",
       "system": "string (optional) - System/Resource being accessed", 
       "reason": "string (required) - Business reason for access",
       "durationMinutes": "number (optional) - Duration in minutes (1-480, default 60)"
+    },
+    "extendBody": {
+      "additionalMinutes": "number (required) - Additional minutes to extend (1-480)"
+    },
+    "listParams": {
+      "status": "string (optional) - Filter by status: active, history, expired, expiring_soon, all",
+      "limit": "number (optional) - Number of records per page (default 50)",
+      "offset": "number (optional) - Number of records to skip (default 0)"
+    },
+    "responseFields": {
+      "computed_status": "string - Real-time computed status (active, expired, expiring_soon)",
+      "time_remaining": "number - Milliseconds until expiration",
+      "username": "string - Email/username of session owner"
     }
   },
   "discovery": {
