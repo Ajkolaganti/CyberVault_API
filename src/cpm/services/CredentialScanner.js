@@ -3,7 +3,7 @@
  * Scans the credentials table for pending/unverified credentials
  */
 
-import supabase from '../../utils/supabaseClient.js';
+import supabaseService from '../../utils/supabaseServiceClient.js';
 import { logger } from '../utils/logger.js';
 
 export class CredentialScanner {
@@ -11,6 +11,7 @@ export class CredentialScanner {
     this.config = config;
     this.batchSize = config.get('batchSize');
     this.scanInterval = config.get('scanInterval');
+    this.db = supabaseService;
   }
   
   /**
@@ -21,7 +22,7 @@ export class CredentialScanner {
     try {
       logger.debug('Starting credential scan...');
       
-      const { data: credentials, error } = await supabase
+      const { data: credentials, error } = await this.db
         .from('credentials')
         .select(`
           id,
@@ -47,6 +48,8 @@ export class CredentialScanner {
         logger.error('Failed to scan credentials:', error);
         throw error;
       }
+
+      logger.debug(`Credential scan query result: Found ${credentials?.length || 0} credentials`);
       
       const count = credentials?.length || 0;
       logger.info(`📊 Found ${count} credentials requiring verification`);
@@ -77,7 +80,7 @@ export class CredentialScanner {
     try {
       const retryThreshold = new Date(Date.now() - this.config.get('retryDelay'));
       
-      const { data: credentials, error } = await supabase
+      const { data: credentials, error } = await this.db
         .from('credentials')
         .select(`
           id,
@@ -124,7 +127,7 @@ export class CredentialScanner {
    */
   async getVerificationStats() {
     try {
-      const { data: stats, error } = await supabase
+      const { data: stats, error } = await this.db
         .from('credentials')
         .select('status, type')
         .not('status', 'is', null);
@@ -164,7 +167,7 @@ export class CredentialScanner {
     try {
       const cutoffDate = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000)); // 30 days ago
       
-      const { error } = await supabase
+      const { error } = await this.db
         .from('credentials')
         .update({
           verification_error: null,

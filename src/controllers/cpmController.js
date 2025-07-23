@@ -121,6 +121,8 @@ export async function triggerVerification(req, res, next) {
       throw updateError;
     }
 
+    logger.info(`Updated ${credential_ids.length} credentials to pending status for verification`);
+
     // Log the manual trigger
     const auditEntries = credentials.map(cred => ({
       user_id: req.user.id,

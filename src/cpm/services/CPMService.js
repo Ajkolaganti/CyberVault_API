@@ -363,7 +363,7 @@ export class CPMService {
         updateData.verified_at = now;
       }
       
-      const { error } = await supabase
+      const { error } = await this.db
         .from('credentials')
         .update(updateData)
         .eq('id', credential.id);
