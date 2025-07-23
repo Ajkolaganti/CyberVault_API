@@ -15,6 +15,8 @@ import { auditLogger } from './middlewares/auditLogger.js';
 import { requestLogger } from './middlewares/requestLogger.js';
 import { corsLogger, securityLogger } from './middlewares/endpointLogger.js';
 import jitCleanupJob from './jobs/jitCleanupJob.js';
+import { CPMService } from './cpm/services/CPMService.js';
+import { CPMConfig } from './cpm/config/cpmConfig.js';
 
 dotenv.config();
 
@@ -100,8 +102,26 @@ app.use(errorHandler);
 // Start the JIT cleanup background job
 jitCleanupJob.start();
 
+// Start the CPM service for credential verification
+let cpmService;
+async function startCPMService() {
+  try {
+    const cpmConfig = CPMConfig.getInstance();
+    if (cpmConfig.validate()) {
+      cpmService = new CPMService(cpmConfig);
+      await cpmService.start();
+      logger.info('CPM Service started successfully');
+    } else {
+      logger.warn('CPM Service not started due to invalid configuration');
+    }
+  } catch (error) {
+    logger.error('Failed to start CPM Service:', error);
+  }
+}
+
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   logger.info(`Server listening on port ${PORT}`);
   logger.info('JIT cleanup background job started');
+  await startCPMService();
 });

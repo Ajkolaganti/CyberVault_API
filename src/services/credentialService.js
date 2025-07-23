@@ -3,12 +3,20 @@ import { encrypt, decrypt } from '../utils/encryption.js';
 
 const TABLE = 'credentials';
 
-export async function createCredential({ userId, type, name, value }) {
+export async function createCredential({ userId, type, name, value, host, port, username }) {
   const encryptedValue = encrypt(value);
   const { data, error } = await supabaseAdmin
     .from(TABLE)
     .insert([
-      { user_id: userId, type, name, value: encryptedValue },
+      { 
+        user_id: userId, 
+        type, 
+        name, 
+        value: encryptedValue,
+        host,
+        port: port ? parseInt(port) : null,
+        username
+      },
     ])
     .select()
     .single();

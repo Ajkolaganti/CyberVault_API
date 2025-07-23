@@ -2,13 +2,16 @@ import * as credentialService from '../services/credentialService.js';
 
 export async function create(req, res, next) {
   try {
-    const { type, name, value, password } = req.body;
+    const { type, name, value, password, host, port, username } = req.body;
     const secretValue = value || password;
     const credential = await credentialService.createCredential({
       userId: req.user.id,
       type,
       name,
       value: secretValue,
+      host,
+      port,
+      username
     });
     res.status(201).json(credential);
   } catch (err) {

@@ -1,0 +1,33 @@
+{
+  "name": "cybervault-cpm",
+  "version": "1.0.0",
+  "description": "CyberVault Central Policy Manager - Automated credential verification service",
+  "main": "src/cpm/index.js",
+  "type": "module",
+  "scripts": {
+    "cpm:start": "node src/cpm/index.js",
+    "cpm:dev": "nodemon src/cpm/index.js",
+    "cpm:test": "node src/cpm/test/testRunner.js",
+    "cpm:status": "curl -s http://localhost:3001/health | jq .",
+    "cpm:logs": "tail -f logs/cpm.log"
+  },
+  "dependencies": {
+    "node-ssh": "^13.1.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "cybervault",
+    "cpm",
+    "credential-verification",
+    "ssh",
+    "api-token",
+    "security",
+    "automation"
+  ]
+}
