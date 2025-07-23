@@ -101,7 +101,7 @@ export async function create(req, res, next) {
       }
     }
     
-    const { name, system_type, port, username, password, connection_method, platform_id, account_type, rotation_policy } = req.body;
+    const { name, system_type, port, username, password, connection_method, platform_id, account_type, rotation_policy, notes } = req.body;
     
     console.log(`[${requestId}] Calling account service...`);
     const account = await accountService.createAccount({
@@ -116,7 +116,8 @@ export async function create(req, res, next) {
       platform_id,
       account_type,
       rotation_policy,
-      safe_id: finalSafeId
+      safe_id: finalSafeId,
+      notes
     });
     
     console.log(`[${requestId}] ✓ Account created successfully:`, account.id);

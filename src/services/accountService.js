@@ -1,28 +1,30 @@
 import supabase, { supabaseAdmin } from '../utils/supabaseClient.js';
 import { v4 as uuidv4 } from 'uuid';
 import { encrypt, decrypt } from '../utils/encryption.js';
+import { encryptAccountFields, decryptAccountFields, encryptField, decryptField } from '../utils/secureEncryption.js';
 import crypto from 'crypto';
 
 const TABLE = 'privileged_accounts';
 const HISTORY_TABLE = 'account_rotation_history';
 
-export async function createAccount({ ownerId, name, system_type, hostname_ip, port, username, password, connection_method, platform_id, rotation_policy, safe_id }) {
+export async function createAccount({ ownerId, name, system_type, hostname_ip, port, username, password, connection_method, platform_id, rotation_policy, safe_id, notes }) {
   console.log('=== Starting Account Creation Process ===');
   
   try {
     // Log input parameters (without sensitive data)
     console.log('Account creation parameters:', {
       ownerId: ownerId || 'MISSING',
-      name: name || 'NOT_PROVIDED',
+      name_provided: name ? 'YES' : 'NO',
       system_type: system_type || 'MISSING',
-      hostname_ip: hostname_ip || 'MISSING',
+      hostname_provided: hostname_ip ? 'YES' : 'NO',
       port: port || 'NOT_PROVIDED',
-      username: username || 'MISSING',
+      username_provided: username ? 'YES' : 'NO',
       password_provided: password ? 'YES' : 'NO',
       password_length: password ? password.length : 0,
       connection_method: connection_method || 'NOT_PROVIDED',
       platform_id: platform_id || 'NOT_PROVIDED',
       safe_id: safe_id || 'NOT_PROVIDED',
+      notes_provided: notes ? 'YES' : 'NO',
       rotation_policy_provided: rotation_policy ? 'YES' : 'NO'
     });
     
@@ -66,15 +68,22 @@ export async function createAccount({ ownerId, name, system_type, hostname_ip, p
       console.log(`✓ Safe validation passed: ${safeExists.name}`);
     }
     
-    // Encrypt password
-    console.log('Encrypting password...');
-    let encryptedPassword;
+    // Encrypt all sensitive fields
+    console.log('Encrypting sensitive data...');
+    let encryptedFields;
     try {
-      encryptedPassword = encrypt(password);
-      console.log('✓ Password encryption successful');
+      const accountData = {
+        name,
+        username,
+        hostname_ip,
+        password,
+        notes
+      };
+      encryptedFields = encryptAccountFields(accountData);
+      console.log('✓ Sensitive data encryption successful');
     } catch (encryptError) {
-      console.error('Password encryption failed:', encryptError);
-      throw new Error(`Password encryption failed: ${encryptError.message}`);
+      console.error('Encryption failed:', encryptError);
+      throw new Error(`Encryption failed: ${encryptError.message}`);
     }
     
     // Prepare account object
@@ -82,12 +91,8 @@ export async function createAccount({ ownerId, name, system_type, hostname_ip, p
     const account = {
       id: accountId,
       owner_id: ownerId,
-      name: name || null,
       system_type,
-      hostname_ip,
       port: port || null,
-      username,
-      encrypted_password: encryptedPassword,
       connection_method: connection_method || null,
       platform_id: platform_id || null,
       rotation_policy: rotation_policy || {
@@ -106,21 +111,20 @@ export async function createAccount({ ownerId, name, system_type, hostname_ip, p
       safe_id: safe_id || null,
       status: 'active',
       created_at: new Date(),
+      // Encrypted fields
+      ...encryptedFields
     };
     
     console.log('Account object prepared:', {
       id: account.id,
       owner_id: account.owner_id,
-      name: account.name,
       system_type: account.system_type,
-      hostname_ip: account.hostname_ip,
       port: account.port,
-      username: account.username,
-      encrypted_password_length: account.encrypted_password ? account.encrypted_password.length : 0,
       connection_method: account.connection_method,
       platform_id: account.platform_id,
       safe_id: account.safe_id,
-      status: account.status
+      status: account.status,
+      encrypted_fields_count: Object.keys(encryptedFields).length
     });
     
     // Insert into database
@@ -220,10 +224,7 @@ async function enrichAccountsWithUserData(accounts) {
     const { data: authUsers, error: authError } = await supabaseAdmin.auth.admin.listUsers();
     if (authError) {
       console.warn('Could not fetch user emails:', authError);
-      return accounts.map(account => ({
-        ...account,
-        decrypted_password: decrypt(account.encrypted_password),
-      }));
+      return accounts.map(account => decryptAccountFields(account));
     }
     
     // Create user email map
@@ -232,18 +233,17 @@ async function enrichAccountsWithUserData(accounts) {
       userEmailMap[user.id] = user.email;
     });
     
-    return accounts.map(account => ({
-      ...account,
-      decrypted_password: decrypt(account.encrypted_password),
-      owner_email: userEmailMap[account.owner_id] || 'Unknown User',
-      rotation_status: getRotationStatus(account)
-    }));
+    return accounts.map(account => {
+      const decryptedAccount = decryptAccountFields(account);
+      return {
+        ...decryptedAccount,
+        owner_email: userEmailMap[account.owner_id] || 'Unknown User',
+        rotation_status: getRotationStatus(account)
+      };
+    });
   } catch (error) {
     console.error('Error enriching accounts with user data:', error);
-    return accounts.map(account => ({
-      ...account,
-      decrypted_password: decrypt(account.encrypted_password),
-    }));
+    return accounts.map(account => decryptAccountFields(account));
   }
 }
 
@@ -270,10 +270,7 @@ export async function getAccountById({ id, ownerId, role }) {
   const { data, error } = await query;
   if (error) throw error;
 
-  return {
-    ...data,
-    decrypted_password: decrypt(data.encrypted_password),
-  };
+  return decryptAccountFields(data);
 }
 
 export async function updateAccount({ id, ownerId, role, updates }) {
