@@ -16,6 +16,7 @@ export async function create(req, res, next) {
     const safe_id = req.body.safe_id || (req.body.safe_name ? null : undefined); // safe_name needs to be converted to UUID
     
     console.log(`[${requestId}] Request body received:`, {
+      name: req.body.name,
       system_type: req.body.system_type,
       hostname: req.body.hostname,
       hostname_ip: hostname_ip,
@@ -100,11 +101,12 @@ export async function create(req, res, next) {
       }
     }
     
-    const { system_type, port, username, password, connection_method, platform_id, account_type, rotation_policy } = req.body;
+    const { name, system_type, port, username, password, connection_method, platform_id, account_type, rotation_policy } = req.body;
     
     console.log(`[${requestId}] Calling account service...`);
     const account = await accountService.createAccount({
       ownerId: req.user.id,
+      name,
       system_type,
       hostname_ip,
       port,

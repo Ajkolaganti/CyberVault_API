@@ -6,13 +6,14 @@ import crypto from 'crypto';
 const TABLE = 'privileged_accounts';
 const HISTORY_TABLE = 'account_rotation_history';
 
-export async function createAccount({ ownerId, system_type, hostname_ip, port, username, password, connection_method, platform_id, account_type, rotation_policy, safe_id }) {
+export async function createAccount({ ownerId, name, system_type, hostname_ip, port, username, password, connection_method, platform_id, rotation_policy, safe_id }) {
   console.log('=== Starting Account Creation Process ===');
   
   try {
     // Log input parameters (without sensitive data)
     console.log('Account creation parameters:', {
       ownerId: ownerId || 'MISSING',
+      name: name || 'NOT_PROVIDED',
       system_type: system_type || 'MISSING',
       hostname_ip: hostname_ip || 'MISSING',
       port: port || 'NOT_PROVIDED',
@@ -21,7 +22,6 @@ export async function createAccount({ ownerId, system_type, hostname_ip, port, u
       password_length: password ? password.length : 0,
       connection_method: connection_method || 'NOT_PROVIDED',
       platform_id: platform_id || 'NOT_PROVIDED',
-      account_type: account_type || 'NOT_PROVIDED',
       safe_id: safe_id || 'NOT_PROVIDED',
       rotation_policy_provided: rotation_policy ? 'YES' : 'NO'
     });
@@ -82,6 +82,7 @@ export async function createAccount({ ownerId, system_type, hostname_ip, port, u
     const account = {
       id: accountId,
       owner_id: ownerId,
+      name: name || null,
       system_type,
       hostname_ip,
       port: port || null,
@@ -89,7 +90,6 @@ export async function createAccount({ ownerId, system_type, hostname_ip, port, u
       encrypted_password: encryptedPassword,
       connection_method: connection_method || null,
       platform_id: platform_id || null,
-      account_type: account_type || null,
       rotation_policy: rotation_policy || {
         enabled: false,
         interval_days: 90,
@@ -111,6 +111,7 @@ export async function createAccount({ ownerId, system_type, hostname_ip, port, u
     console.log('Account object prepared:', {
       id: account.id,
       owner_id: account.owner_id,
+      name: account.name,
       system_type: account.system_type,
       hostname_ip: account.hostname_ip,
       port: account.port,
@@ -118,7 +119,6 @@ export async function createAccount({ ownerId, system_type, hostname_ip, port, u
       encrypted_password_length: account.encrypted_password ? account.encrypted_password.length : 0,
       connection_method: account.connection_method,
       platform_id: account.platform_id,
-      account_type: account.account_type,
       safe_id: account.safe_id,
       status: account.status
     });
@@ -304,6 +304,8 @@ export async function deleteAccount({ id, ownerId, role }) {
   }
 
   const { data, error } = await query;
+  console.log('data', data);
+  console.log('error', error);
   if (error) throw error;
   return data;
 }
