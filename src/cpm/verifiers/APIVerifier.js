@@ -3,7 +3,7 @@
  * Verifies API tokens by making test requests
  */
 
-import fetch from 'node-fetch';
+// Use built-in fetch in Node.js 18+
 import { logger } from '../utils/logger.js';
 import { decrypt } from '../../utils/encryption.js';
 

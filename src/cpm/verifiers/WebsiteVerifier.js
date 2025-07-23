@@ -3,7 +3,7 @@
  * Verifies website login credentials and HTTP authentication
  */
 
-import fetch from 'node-fetch';
+// Use built-in fetch in Node.js 18+
 import { JSDOM } from 'jsdom';
 import { logger } from '../utils/logger.js';
 import { decrypt } from '../../utils/encryption.js';
