@@ -131,10 +131,36 @@ export async function listScans(req, res, next) {
       offset: parseInt(offset)
     });
 
+    // Enhance scan data with better error details
+    const enhancedScans = scans.map(scan => {
+      if (scan.status === 'failed' && scan.metadata?.error_message) {
+        // Parse error details if available
+        try {
+          let errorDetails = scan.metadata.error_message;
+          if (errorDetails.includes('Details: {')) {
+            const detailsStart = errorDetails.indexOf('Details: {');
+            const detailsJson = errorDetails.substring(detailsStart + 9);
+            try {
+              const parsedDetails = JSON.parse(detailsJson);
+              scan.error_details = parsedDetails;
+              scan.friendly_error = getFriendlyErrorMessage(errorDetails, parsedDetails);
+            } catch (parseError) {
+              scan.friendly_error = getSimplifiedErrorMessage(errorDetails);
+            }
+          } else {
+            scan.friendly_error = getSimplifiedErrorMessage(errorDetails);
+          }
+        } catch (e) {
+          scan.friendly_error = scan.metadata.error_message;
+        }
+      }
+      return scan;
+    });
+
     res.json({
       success: true,
-      data: scans,
-      count: scans.length,
+      data: enhancedScans,
+      count: enhancedScans.length,
       pagination: {
         limit: parseInt(limit),
         offset: parseInt(offset)
@@ -143,6 +169,45 @@ export async function listScans(req, res, next) {
   } catch (err) {
     next(err);
   }
+}
+
+// Helper function to create user-friendly error messages
+function getFriendlyErrorMessage(errorMessage, errorDetails) {
+  if (errorMessage.includes('SSH connection timeout')) {
+    return 'Connection timeout - The target server is not responding. Please check if the server is online and SSH is enabled.';
+  }
+  
+  if (errorMessage.includes('ECONNREFUSED')) {
+    return 'Connection refused - SSH service is not running on the target server or is blocked by firewall.';
+  }
+  
+  if (errorMessage.includes('Authentication failed') || errorMessage.includes('auth')) {
+    return 'Authentication failed - Please check the username and password in the selected credential.';
+  }
+  
+  if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('host not found')) {
+    return 'Host not found - Please check the hostname or IP address.';
+  }
+  
+  if (errorMessage.includes('No credential provided')) {
+    return 'Missing credential - Please select a valid credential for this discovery target.';
+  }
+  
+  if (errorMessage.includes('Credential does not contain password')) {
+    return 'Invalid credential - The selected credential does not contain a password or value field.';
+  }
+  
+  if (errorMessage.includes('No accounts discovered')) {
+    return 'No user accounts found - The system may not have any user accounts, or the commands failed to execute.';
+  }
+  
+  return getSimplifiedErrorMessage(errorMessage);
+}
+
+function getSimplifiedErrorMessage(errorMessage) {
+  // Extract the main error without stack traces and details
+  const mainError = errorMessage.split('.')[0];
+  return mainError.length > 100 ? mainError.substring(0, 100) + '...' : mainError;
 }
 
 export async function getScanById(req, res, next) {
