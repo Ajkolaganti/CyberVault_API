@@ -14,6 +14,7 @@ import safeRoutes from './safeRoutes.js';
 import cpmRoutes from './cpmRoutes.js';
 import userRoutes from './userRoutes.js';
 import validationRoutes from './validationRoutes.js';
+import healthRoutes from './healthRoutes.js';
 
 
 const router = Router();
@@ -33,6 +34,7 @@ router.use('/safes', safeRoutes);
 router.use('/cpm', cpmRoutes);
 router.use('/user', userRoutes);
 router.use('/validation', validationRoutes);
+router.use('/health', healthRoutes);
 // TODO: add credential, JIT access, discovery, session, policy routes
 
 export default router; 

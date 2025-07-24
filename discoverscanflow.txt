@@ -1,0 +1,358 @@
+📋 Discovery Scan Endpoints for Frontend
+
+  🎯 API Endpoints Documentation
+
+  Base URL: http://localhost:4000/api/v1/discovery
+
+  ---
+  1. Discovery Targets Management
+
+  Create Discovery Target
+
+  POST /api/v1/discovery/targets
+  Content-Type: application/json
+  Authorization: Bearer <token>
+
+  {
+    "name": "Production Linux Servers",
+    "targetType": "linux",           // linux, windows, aws, database, active_directory
+    "hostname": "192.168.1.100",
+    "connectionMethod": "ssh",       // ssh, winrm, https, aws_api, database
+    "credentialId": "uuid-here",
+    "description": "Scan production environment",
+    "settings": {
+      "port": 22,
+      "timeout": 30000
+    }
+  }
+
+  List Discovery Targets
+
+  GET /api/v1/discovery/targets
+  Authorization: Bearer <token>
+
+  Get Discovery Target
+
+  GET /api/v1/discovery/targets/{targetId}
+  Authorization: Bearer <token>
+
+  ---
+  2. Discovery Scans Management
+
+  Start Discovery Scan
+
+  POST /api/v1/discovery/targets/{targetId}/scan
+  Content-Type: application/json
+  Authorization: Bearer <token>
+
+  {
+    "scanSettings": {
+      "includeSystemAccounts": false,
+      "timeout": 30000,
+      "maxAccounts": 1000
+    }
+  }
+
+  List Discovery Scans
+
+  GET /api/v1/discovery/scans?targetId={optional}&limit=50&offset=0
+  Authorization: Bearer <token>
+
+  Get Discovery Scan Details
+
+  GET /api/v1/discovery/scans/{scanId}
+  Authorization: Bearer <token>
+
+  ---
+  3. Discovered Accounts Management
+
+  List Discovered Accounts
+
+  GET /api/v1/discovery/accounts?scanId={optional}&status=pending_approval
+  Authorization: Bearer <token>
+
+  Query Parameters:
+  - scanId (optional): Filter by specific scan
+  - status: pending_approval, active, rejected
+
+  Approve Discovered Accounts
+
+  POST /api/v1/discovery/accounts/approve
+  Content-Type: application/json
+  Authorization: Bearer <token>
+
+  {
+    "accountIds": ["uuid1", "uuid2", "uuid3"],
+    "onboardingSettings": {
+      "rotationPolicy": "30days",
+      "monitoring": true,
+      "autoRotate": false
+    }
+  }
+
+  Reject Discovered Accounts
+
+  POST /api/v1/discovery/accounts/reject
+  Content-Type: application/json
+  Authorization: Bearer <token>
+
+  {
+    "accountIds": ["uuid1", "uuid2", "uuid3"],
+    "reason": "Security policy violation"
+  }
+
+  ---
+  4. Discovery Statistics
+
+  Get Discovery Statistics
+
+  GET /api/v1/discovery/statistics?range=30d
+  Authorization: Bearer <token>
+
+  Query Parameters:
+  - range: 1h, 24h, 7d, 30d
+
+  ---
+  🗄️ Required Database Schema
+
+  1. Discovery Targets Table
+
+  CREATE TABLE discovery_targets (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      target_type VARCHAR(50) NOT NULL, -- 'linux', 'windows', 'aws', 'database', 'active_directory'
+      hostname VARCHAR(255) NOT NULL,
+      connection_method VARCHAR(50) NOT NULL, -- 'ssh', 'winrm', 'https', 'aws_api', 'database'
+      credential_id UUID NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,
+      settings JSONB DEFAULT '{}',
+      status VARCHAR(50) DEFAULT 'active', -- 'active', 'inactive', 'error'
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+
+  -- Indexes
+  CREATE INDEX idx_discovery_targets_user_id ON discovery_targets(user_id);
+  CREATE INDEX idx_discovery_targets_status ON discovery_targets(status);
+  CREATE INDEX idx_discovery_targets_type ON discovery_targets(target_type);
+
+  2. Discovery Scans Table
+
+  CREATE TABLE discovery_scans (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      target_id UUID NOT NULL REFERENCES discovery_targets(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      status VARCHAR(50) NOT NULL DEFAULT 'pending', -- 'pending', 'running', 'completed', 'failed', 'cancelled'
+      settings JSONB DEFAULT '{}',
+      metadata JSONB DEFAULT '{}', -- stores scan results, errors, statistics
+      started_at TIMESTAMPTZ DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+  );
+
+  -- Indexes
+  CREATE INDEX idx_discovery_scans_target_id ON discovery_scans(target_id);
+  CREATE INDEX idx_discovery_scans_user_id ON discovery_scans(user_id);
+  CREATE INDEX idx_discovery_scans_status ON discovery_scans(status);
+  CREATE INDEX idx_discovery_scans_created_at ON discovery_scans(created_at DESC);
+
+  3. Enhanced Privileged Accounts Table
+
+  -- Add discovery-related columns to existing privileged_accounts table
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS discovered BOOLEAN DEFAULT FALSE;
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS discovery_scan_id UUID REFERENCES discovery_scans(id);
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS discovery_source VARCHAR(50);
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS discovery_metadata JSONB DEFAULT '{}';
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS discovered_at TIMESTAMPTZ;
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES profiles(id);
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS rejected_by UUID REFERENCES profiles(id);
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+  ALTER TABLE privileged_accounts ADD COLUMN IF NOT EXISTS onboarding_settings JSONB DEFAULT '{}';
+
+  -- Indexes for discovery features
+  CREATE INDEX IF NOT EXISTS idx_privileged_accounts_discovered ON privileged_accounts(discovered);
+  CREATE INDEX IF NOT EXISTS idx_privileged_accounts_discovery_scan ON privileged_accounts(discovery_scan_id);
+  CREATE INDEX IF NOT EXISTS idx_privileged_accounts_discovery_source ON privileged_accounts(discovery_source);
+  CREATE INDEX IF NOT EXISTS idx_privileged_accounts_discovered_at ON privileged_accounts(discovered_at DESC);
+
+  4. Row Level Security (RLS) Policies
+
+  -- Discovery targets RLS
+  ALTER TABLE discovery_targets ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "Users can view their own discovery targets" ON discovery_targets
+      FOR SELECT USING (user_id = auth.uid());
+
+  CREATE POLICY "Users can create their own discovery targets" ON discovery_targets
+      FOR INSERT WITH CHECK (user_id = auth.uid());
+
+  CREATE POLICY "Users can update their own discovery targets" ON discovery_targets
+      FOR UPDATE USING (user_id = auth.uid());
+
+  CREATE POLICY "Admins can view all discovery targets" ON discovery_targets
+      FOR ALL USING (
+          EXISTS (
+              SELECT 1 FROM profiles
+              WHERE id = auth.uid() AND role IN ('Admin', 'Manager')
+          )
+      );
+
+  -- Discovery scans RLS
+  ALTER TABLE discovery_scans ENABLE ROW LEVEL SECURITY;
+
+  CREATE POLICY "Users can view their own discovery scans" ON discovery_scans
+      FOR SELECT USING (user_id = auth.uid());
+
+  CREATE POLICY "Users can create their own discovery scans" ON discovery_scans
+      FOR INSERT WITH CHECK (user_id = auth.uid());
+
+  CREATE POLICY "Admins can view all discovery scans" ON discovery_scans
+      FOR ALL USING (
+          EXISTS (
+              SELECT 1 FROM profiles
+              WHERE id = auth.uid() AND role IN ('Admin', 'Manager')
+          )
+      );
+
+  ---
+  📊 Frontend Integration Examples
+
+  React/TypeScript Integration
+
+  1. Create Discovery Target
+
+  interface CreateTargetRequest {
+    name: string;
+    targetType: 'linux' | 'windows' | 'aws' | 'database' | 'active_directory';
+    hostname: string;
+    connectionMethod: 'ssh' | 'winrm' | 'https' | 'aws_api' | 'database';
+    credentialId: string;
+    description?: string;
+    settings?: Record<string, any>;
+  }
+
+  const createDiscoveryTarget = async (data: CreateTargetRequest) => {
+    const response = await fetch('/api/v1/discovery/targets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+    return response.json();
+  };
+
+  2. Start Discovery Scan
+
+  const startDiscoveryScan = async (targetId: string, scanSettings?: any) => {
+    const response = await fetch(`/api/v1/discovery/targets/${targetId}/scan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ scanSettings })
+    });
+    return response.json();
+  };
+
+  3. Get Discovered Accounts
+
+  interface DiscoveredAccount {
+    id: string;
+    account_name: string;
+    system_type: string;
+    hostname_ip: string;
+    status: 'pending_approval' | 'active' | 'rejected';
+    discovered_at: string;
+    discovery_scan_id: string;
+    discovery_metadata: Record<string, any>;
+  }
+
+  const getDiscoveredAccounts = async (status = 'pending_approval') => {
+    const response = await fetch(`/api/v1/discovery/accounts?status=${status}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    return response.json();
+  };
+
+  4. Approve Accounts
+
+  const approveAccounts = async (accountIds: string[], onboardingSettings?: any) => {
+    const response = await fetch('/api/v1/discovery/accounts/approve', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ accountIds, onboardingSettings })
+    });
+    return response.json();
+  };
+
+  ---
+  🎯 Response Examples
+
+  Discovery Target Response
+
+  {
+    "success": true,
+    "data": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "Production Linux Servers",
+      "target_type": "linux",
+      "hostname": "192.168.1.100",
+      "connection_method": "ssh",
+      "credential_id": "660e8400-e29b-41d4-a716-446655440001",
+      "status": "active",
+      "created_at": "2025-01-24T10:00:00Z"
+    }
+  }
+
+  Discovery Scan Response
+
+  {
+    "success": true,
+    "data": {
+      "id": "770e8400-e29b-41d4-a716-446655440002",
+      "target_id": "550e8400-e29b-41d4-a716-446655440000",
+      "status": "completed",
+      "metadata": {
+        "accounts_discovered": 15,
+        "accounts_stored": 12,
+        "completed_at": "2025-01-24T10:05:30Z"
+      },
+      "started_at": "2025-01-24T10:00:00Z"
+    }
+  }
+
+  Discovered Accounts Response
+
+  {
+    "success": true,
+    "data": [
+      {
+        "id": "880e8400-e29b-41d4-a716-446655440003",
+        "account_name": "john.doe",
+        "system_type": "linux",
+        "hostname_ip": "192.168.1.100",
+        "status": "pending_approval",
+        "discovered_at": "2025-01-24T10:05:00Z",
+        "discovery_scan_id": "770e8400-e29b-41d4-a716-446655440002",
+        "discovery_metadata": {
+          "discovered_via": "getent passwd",
+          "raw_data": "john.doe:x:1001:1001:John Doe:/home/john.doe:/bin/bash"
+        }
+      }
+    ],
+    "count": 1
+  }
+
+  This complete documentation provides everything your frontend team needs to integrate the Discovery Scan functionality! 🚀

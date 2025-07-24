@@ -151,3 +151,106 @@ export async function getResourceValidationStatus(req, res, next) {
     next(err);
   }
 }
+
+export async function getJitHealthStatus(req, res, next) {
+  try {
+    const { range = '24h' } = req.query;
+    
+    const healthData = await validationService.getJitHealthStatus({
+      userId: req.user.id,
+      role: req.user.role,
+      range
+    });
+    
+    res.json({
+      success: true,
+      data: healthData
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAccountsValidationStatus(req, res, next) {
+  try {
+    const { range = '24h' } = req.query;
+    
+    const accountsStatus = await validationService.getAccountsValidationStatus({
+      userId: req.user.id,
+      role: req.user.role,
+      range
+    });
+    
+    res.json({
+      success: true,
+      data: accountsStatus
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAccountsValidationStatistics(req, res, next) {
+  try {
+    const { range = '24h' } = req.query;
+    
+    const statistics = await validationService.getAccountsValidationStatistics({
+      userId: req.user.id,
+      role: req.user.role,
+      range
+    });
+    
+    res.json({
+      success: true,
+      data: statistics
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAccountsValidationHistory(req, res, next) {
+  try {
+    const { limit = 50, offset = 0, range = '7d' } = req.query;
+    
+    const history = await validationService.getAccountsValidationHistory({
+      userId: req.user.id,
+      role: req.user.role,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      range
+    });
+    
+    res.json({
+      success: true,
+      data: history,
+      pagination: {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        total: history.length
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAccountsValidationFailures(req, res, next) {
+  try {
+    const { limit = 50, range = '24h' } = req.query;
+    
+    const failures = await validationService.getAccountsValidationFailures({
+      userId: req.user.id,
+      role: req.user.role,
+      limit: parseInt(limit),
+      range
+    });
+    
+    res.json({
+      success: true,
+      data: failures
+    });
+  } catch (err) {
+    next(err);
+  }
+}

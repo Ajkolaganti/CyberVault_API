@@ -54,4 +54,15 @@ router.get('/recent', validationController.getRecentValidations);
 // Validation status for specific resource
 router.get('/status/:resourceType/:resourceId', validationController.getResourceValidationStatus);
 
+// JIT health status endpoint
+router.get('/jit/status', validationController.getJitHealthStatus);
+
+// Accounts validation status endpoint
+router.get('/accounts/status', validationController.getAccountsValidationStatus);
+
+// Additional account validation endpoints
+router.get('/accounts/statistics', validationController.getAccountsValidationStatistics);
+router.get('/accounts/history', validationController.getAccountsValidationHistory);
+router.get('/accounts/failures', validationController.getAccountsValidationFailures);
+
 export default router;
