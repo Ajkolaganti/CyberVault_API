@@ -1,4 +1,45 @@
 import winston from 'winston';
+import { Logtail } from "@logtail/node";
+
+// Initialize Logtail
+const logtail = new Logtail(process.env.LOGTAIL_TOKEN || "YOUR_LOGTAIL_TOKEN");
+
+// Custom Logtail transport for Winston
+class LogtailTransport extends winston.Transport {
+  constructor(opts) {
+    super(opts);
+    this.name = 'logtail';
+    this.level = opts.level || 'info';
+  }
+
+  log(info, callback) {
+    setImmediate(() => {
+      this.emit('logged', info);
+    });
+
+    // Send to Logtail based on level
+    const { level, message, ...meta } = info;
+    
+    switch (level) {
+      case 'error':
+        logtail.error(message, meta);
+        break;
+      case 'warn':
+        logtail.warn(message, meta);
+        break;
+      case 'info':
+        logtail.info(message, meta);
+        break;
+      case 'debug':
+        logtail.debug(message, meta);
+        break;
+      default:
+        logtail.log(message, meta);
+    }
+
+    callback();
+  }
+}
 
 const logger = winston.createLogger({
   level: 'info',
@@ -6,7 +47,13 @@ const logger = winston.createLogger({
     winston.format.timestamp(),
     winston.format.json()
   ),
-  transports: [new winston.transports.Console()],
+  transports: [
+    new winston.transports.Console(),
+    // Add Logtail transport for production logging
+    ...(process.env.LOGTAIL_TOKEN ? [new LogtailTransport({ level: 'info' })] : [])
+  ],
 });
 
-export default logger; 
+// Export both logger and logtail for direct usage
+export default logger;
+export { logtail }; 

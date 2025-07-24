@@ -1,4 +1,5 @@
 import * as jitService from '../services/jitService.js';
+import { logtail } from '../utils/logger.js';
 
 export async function request(req, res, next) {
   try {
@@ -19,6 +20,26 @@ export async function request(req, res, next) {
       reason: reason.trim(),
       durationMinutes: durationMinutes || 60, // default 1hr
     });
+
+    // Log JIT access request
+    logtail.info("JIT access requested", {
+      app_name: "CyberVault API",
+      type: "jit_event",
+      action: "request_access",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      session_id: session.id,
+      resource: resource,
+      system: system,
+      reason: reason.trim(),
+      duration_minutes: durationMinutes || 60,
+      expires_at: session.expires_at,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
     res.status(201).json(session);
   } catch (err) {
     // Handle specific database constraint errors
@@ -81,6 +102,21 @@ export async function revoke(req, res, next) {
       userId: req.user.id,
       role: req.user.role,
     });
+
+    // Log JIT session revocation
+    logtail.info("JIT session revoked", {
+      app_name: "CyberVault API",
+      type: "jit_event",
+      action: "revoke_session",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      session_id: req.params.id,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
     res.json(session);
   } catch (err) {
     next(err);
@@ -116,6 +152,22 @@ export async function extend(req, res, next) {
       userId: req.user.id,
       role: req.user.role,
       additionalMinutes: parseInt(additionalMinutes)
+    });
+
+    // Log JIT session extension
+    logtail.info("JIT session extended", {
+      app_name: "CyberVault API",
+      type: "jit_event",
+      action: "extend_session",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      session_id: req.params.id,
+      additional_minutes: parseInt(additionalMinutes),
+      new_expires_at: session.expires_at,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
     });
     
     res.json(session);

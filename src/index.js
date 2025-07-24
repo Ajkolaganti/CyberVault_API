@@ -7,6 +7,8 @@ import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { Logtail } from "@logtail/node";
+import morgan from "morgan";
 
 import routes from './routes/index.js';
 import { errorHandler } from './middlewares/errorHandler.js';
@@ -14,12 +16,27 @@ import logger from './utils/logger.js';
 import { auditLogger } from './middlewares/auditLogger.js';
 import { requestLogger } from './middlewares/requestLogger.js';
 import { corsLogger, securityLogger } from './middlewares/endpointLogger.js';
+import { apiMonitoring, criticalEndpointMonitoring } from './middlewares/apiMonitoring.js';
 import jitCleanupJob from './jobs/jitCleanupJob.js';
 import verifyAccountsJob from './jobs/verifyAccountsJob.js';
 import { CPMService } from './cpm/services/CPMService.js';
 import { CPMConfig } from './cpm/config/cpmConfig.js';
 
 dotenv.config();
+
+// Initialize Logtail with app metadata
+const logtail = new Logtail(process.env.LOGTAIL_TOKEN || "YOUR_LOGTAIL_TOKEN", {
+  sendLogsToConsoleOutput: process.env.NODE_ENV !== 'production'
+});
+
+// Set default context for all logs
+logtail.info("CyberVault API starting", {
+  app_name: "CyberVault API",
+  environment: process.env.NODE_ENV || 'development',
+  main_url: process.env.MAIN_URL || "https://cybervault-api-a1fo.onrender.com",
+  version: process.env.npm_package_version || "1.0.0",
+  timestamp: new Date().toISOString()
+});
 
 const app = express();
 
@@ -76,6 +93,34 @@ app.set('trust proxy', true);
 
 app.use(express.json({ limit: '10kb' }));
 
+// Enhanced Morgan request logging with Logtail
+app.use(
+  morgan(":remote-addr - :remote-user [:date[clf]] \":method :url HTTP/:http-version\" :status :res[content-length] \":referrer\" \":user-agent\" :response-time ms", {
+    stream: {
+      write: (message) => {
+        const parts = message.trim().split(' ');
+        const method = parts[5]?.replace('"', '');
+        const url = parts[6];
+        const status = parseInt(parts[8]);
+        const responseTime = parts[parts.length - 2];
+        
+        logtail.info("API Request", {
+          app_name: "CyberVault API",
+          type: "http_request",
+          method: method,
+          url: url,
+          status_code: status,
+          response_time_ms: parseFloat(responseTime),
+          ip: parts[0],
+          user_agent: parts.slice(11).join(' ').replace(/"/g, ''),
+          timestamp: new Date().toISOString(),
+          success: status < 400
+        });
+      },
+    },
+  })
+);
+
 // Configure rate limiting based on environment
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -108,6 +153,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use(requestLogger);
 app.use(corsLogger);
 app.use(securityLogger);
+app.use(apiMonitoring);
+app.use(criticalEndpointMonitoring);
 app.use('/api/v1', routes);
 app.use(auditLogger);
 

@@ -1,4 +1,5 @@
 import * as credentialService from '../services/credentialService.js';
+import { logtail } from '../utils/logger.js';
 
 export async function create(req, res, next) {
   try {
@@ -13,6 +14,25 @@ export async function create(req, res, next) {
       port,
       username
     });
+
+    // Log credential creation (without sensitive data)
+    logtail.info("Credential created", {
+      app_name: "CyberVault API",
+      type: "credential_event",
+      action: "create",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      credential_id: credential.id,
+      credential_type: type,
+      credential_name: name,
+      host: host,
+      username: username,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
     res.status(201).json(credential);
   } catch (err) {
     next(err);
@@ -70,6 +90,23 @@ export async function update(req, res, next) {
       role: req.user.role,
       updates: req.body,
     });
+
+    // Log credential rotation/update (without sensitive data)
+    logtail.info("Credential rotated/updated", {
+      app_name: "CyberVault API",
+      type: "credential_event",
+      action: "rotate",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      credential_id: req.params.id,
+      credential_name: credential.name,
+      updated_fields: Object.keys(req.body),
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
     res.json(credential);
   } catch (err) {
     next(err);
@@ -78,11 +115,26 @@ export async function update(req, res, next) {
 
 export async function remove(req, res, next) {
   try {
-    await credentialService.deleteCredential({
+    const deletedCredential = await credentialService.deleteCredential({
       id: req.params.id,
       userId: req.user.id,
       role: req.user.role,
     });
+
+    // Log credential deletion
+    logtail.warn("Credential deleted", {
+      app_name: "CyberVault API",
+      type: "credential_event",
+      action: "delete",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      credential_id: req.params.id,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
     res.status(204).end();
   } catch (err) {
     next(err);

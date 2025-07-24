@@ -4,11 +4,20 @@ import logger from '../utils/logger.js';
 import { supabaseAdmin } from '../utils/supabaseClient.js';
 
 export async function authenticate(req, res, next) {
+  // Check for token in Authorization header first, then query parameter
+  let token = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query.token) {
+    // Support token in query parameter for EventSource
+    token = req.query.token;
+  }
+  
+  if (!token) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
-  const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;

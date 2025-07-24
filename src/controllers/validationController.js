@@ -22,6 +22,7 @@ export async function getValidationStream(req, res, next) {
       'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': req.headers.origin || 'http://localhost:5173',
       'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Expose-Headers': 'Content-Type',
       'X-Accel-Buffering': 'no' // Disable nginx buffering if behind proxy
     });
 
