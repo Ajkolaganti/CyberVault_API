@@ -261,14 +261,34 @@ function getRotationStatus(account) {
 }
 
 export async function getAccountById({ id, ownerId, role }) {
-  let query = supabase.from(TABLE).select('*').eq('id', id).single();
+  console.log(`Querying account: id=${id}, ownerId=${ownerId}, role=${role}`);
+  
+  let query = supabase.from(TABLE).select('*').eq('id', id);
 
   if (role === 'User') {
     query = query.eq('owner_id', ownerId);
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
+  // First, let's see what we get without .single()
+  const { data: allData, error: listError } = await query;
+  console.log('Query results without .single():', { count: allData?.length, error: listError });
+  
+  if (listError) {
+    console.error('List query error:', listError);
+    throw new Error(`Database error: ${listError.message}`);
+  }
+  
+  if (!allData || allData.length === 0) {
+    throw new Error('Account not found');
+  }
+  
+  if (allData.length > 1) {
+    console.warn(`Multiple accounts found for ID ${id}:`, allData.map(a => ({ id: a.id, owner_id: a.owner_id })));
+    throw new Error('Multiple accounts found with same ID');
+  }
+
+  const data = allData[0];
+  console.log('Found account:', { id: data.id, owner_id: data.owner_id, system_type: data.system_type });
 
   return decryptAccountFields(data);
 }
@@ -471,4 +491,391 @@ export async function checkAccountsRequiringRotation() {
     
   if (error) throw error;
   return data || [];
+}
+
+export async function validateAccountCredentials({ id, ownerId, role, force = false }) {
+  try {
+    console.log(`Starting account validation for account ${id}, ownerId: ${ownerId}, role: ${role}`);
+    
+    // Get the account details
+    const account = await getAccountById({ id, ownerId, role });
+    if (!account) {
+      throw new Error('Account not found');
+    }
+    
+    console.log('Account retrieved:', {
+      id: account.id,
+      system_type: account.system_type,
+      connection_method: account.connection_method,
+      hostname_ip: account.hostname_ip,
+      username: account.username,
+      has_password: !!account.password,
+      has_encrypted_password: !!account.encrypted_password
+    });
+    
+    // Convert account to credential format for verification
+    const credentialType = mapAccountTypeToCredentialType(account.system_type, account.connection_method);
+    
+    // Ensure password is properly decrypted
+    let password = account.password;
+    if (!password && account.encrypted_password) {
+      try {
+        password = decryptField(account.encrypted_password);
+      } catch (error) {
+        console.error('Failed to decrypt account password:', error);
+        throw new Error('Account password could not be decrypted for validation');
+      }
+    }
+    
+    if (!password) {
+      throw new Error('Account password is missing or could not be decrypted');
+    }
+    
+    // Create credential data in the format expected by CPM verifiers
+    const connectionConfig = {
+      host: account.hostname_ip,
+      port: account.port,
+      username: account.username,
+      password: password
+    };
+    
+    const credentialData = {
+      id: account.id,
+      type: credentialType,
+      host: account.hostname_ip,
+      port: account.port,
+      username: account.username,
+      value: encrypt(JSON.stringify(connectionConfig)), // Encrypt the connection config
+      connection_method: account.connection_method,
+      system_type: account.system_type
+    };
+    
+    console.log(`Account mapped to credential type: ${credentialType}`);
+    
+    // Import the CPM verification service
+    const { CPMService } = await import('../cpm/services/CPMService.js');
+    const { CPMConfig } = await import('../cpm/config/cpmConfig.js');
+    
+    // Create a temporary CPM service for validation
+    const config = CPMConfig.getInstance();
+    const cpmService = new CPMService(config);
+    
+    // Perform verification
+    const result = await cpmService.verifyCredential(credentialData);
+    
+    // Store validation result
+    await storeValidationResult(account.id, result, ownerId);
+    
+    console.log(`Account validation completed for ${id}: ${result.verificationResult.success ? 'SUCCESS' : 'FAILED'}`);
+    
+    return {
+      account_id: account.id,
+      validation_status: result.verificationResult.success ? 'valid' : 'invalid',
+      validation_message: result.verificationResult.message,
+      validation_timestamp: new Date().toISOString(),
+      duration_ms: result.duration
+    };
+    
+  } catch (error) {
+    console.error(`Account validation failed for ${id}:`, error);
+    
+    // Store failed validation result
+    await storeValidationResult(id, {
+      verificationResult: {
+        success: false,
+        message: error.message,
+        error_category: 'validation_error'
+      },
+      duration: 0
+    }, ownerId);
+    
+    throw error;
+  }
+}
+
+function mapAccountTypeToCredentialType(systemType, connectionMethod) {
+  // Map account system types to credential types that CPM verifiers understand
+  const systemTypeLower = systemType?.toLowerCase() || '';
+  const connectionMethodLower = connectionMethod?.toLowerCase() || '';
+  
+  // SSH-based systems
+  if (connectionMethodLower.includes('ssh') || 
+      systemTypeLower.includes('linux') || 
+      systemTypeLower.includes('unix') ||
+      connectionMethodLower.includes('sftp')) {
+    return 'ssh';
+  }
+  
+  // Windows/RDP systems  
+  if (connectionMethodLower.includes('rdp') || 
+      connectionMethodLower.includes('winrm') ||
+      connectionMethodLower.includes('powershell') ||
+      systemTypeLower.includes('windows')) {
+    return 'password'; // Uses Windows verifier
+  }
+  
+  // Database systems
+  if (systemTypeLower.includes('database') || 
+      systemTypeLower.includes('oracle') ||
+      connectionMethodLower.includes('sql')) {
+    return 'database';
+  }
+  
+  // Web-based systems
+  if (systemTypeLower.includes('website') ||
+      systemTypeLower.includes('application') ||
+      connectionMethodLower.includes('http')) {
+    return 'password'; // Uses Website verifier
+  }
+  
+  // Cloud/API systems
+  if (systemTypeLower.includes('cloud') ||
+      systemTypeLower.includes('aws') ||
+      systemTypeLower.includes('azure') ||
+      connectionMethodLower.includes('api')) {
+    return 'api_token';
+  }
+  
+  // Certificate-based
+  if (systemTypeLower.includes('certificate') ||
+      systemTypeLower.includes('security')) {
+    return 'certificate';
+  }
+  
+  // Default to password type for general systems
+  return 'password';
+}
+
+async function storeValidationResult(accountId, verificationResult, validatedBy) {
+  try {
+    const validationEntry = {
+      account_id: accountId,
+      validation_status: verificationResult.verificationResult.success ? 'valid' : 'invalid',
+      validation_message: verificationResult.verificationResult.message,
+      error_category: verificationResult.verificationResult.error_category || null,
+      duration_ms: verificationResult.duration || 0,
+      validated_by: validatedBy,
+      validated_at: new Date().toISOString()
+    };
+    
+    // Store in account_validation_history table (we'll create this)
+    const { error } = await supabase
+      .from('account_validation_history')
+      .insert([validationEntry]);
+    
+    if (error) {
+      console.error('Failed to store validation result:', error);
+      // Don't throw - validation succeeded even if we can't store the history
+    }
+    
+    // Update the account's last validation status
+    const { error: updateError } = await supabase
+      .from(TABLE)
+      .update({
+        last_validation_status: validationEntry.validation_status,
+        last_validated_at: validationEntry.validated_at,
+        validation_message: validationEntry.validation_message
+      })
+      .eq('id', accountId);
+    
+    if (updateError) {
+      console.error('Failed to update account validation status:', updateError);
+    }
+    
+  } catch (error) {
+    console.error('Error storing validation result:', error);
+  }
+}
+
+export async function getValidationHistory({ accountId, ownerId, role }) {
+  try {
+    // First verify the user has access to this account
+    const account = await getAccountById({ id: accountId, ownerId, role });
+    if (!account) {
+      throw new Error('Account not found or access denied');
+    }
+    
+    const { data, error } = await supabase
+      .from('account_validation_history')
+      .select('*')
+      .eq('account_id', accountId)
+      .order('validated_at', { ascending: false })
+      .limit(50);
+    
+    if (error) {
+      console.error('Failed to fetch validation history:', error);
+      return []; // Return empty array if table doesn't exist yet
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error getting validation history:', error);
+    return [];
+  }
+}
+
+export async function findAccountsForVerification({ statuses, lastValidatedBefore, limit = 10 }) {
+  try {
+    let query = supabase
+      .from(TABLE)
+      .select('*')
+      .in('status', statuses);
+    
+    // Add condition for accounts that haven't been validated recently
+    if (lastValidatedBefore) {
+      query = query.or(`last_validated_at.is.null,last_validated_at.lt.${lastValidatedBefore}`);
+    }
+    
+    query = query
+      .order('created_at', { ascending: true })
+      .limit(limit);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    
+    // Decrypt the accounts before returning
+    return (data || []).map(account => decryptAccountFields(account));
+    
+  } catch (error) {
+    console.error('Failed to find accounts for verification:', error);
+    throw error;
+  }
+}
+
+export async function updateAccountVerificationStatus({ 
+  accountId, 
+  status, 
+  verifiedAt, 
+  verificationMessage, 
+  durationMs,
+  lastAttemptAt 
+}) {
+  try {
+    const updateData = {
+      last_validation_status: status,
+      validation_message: verificationMessage
+    };
+    
+    if (verifiedAt) {
+      updateData.last_validated_at = verifiedAt;
+    }
+    
+    if (lastAttemptAt) {
+      updateData.last_validation_attempt = lastAttemptAt;
+    }
+    
+    // If verification succeeded, also update account status
+    if (status === 'verified') {
+      updateData.status = 'active';
+    }
+    
+    const { error } = await supabase
+      .from(TABLE)
+      .update(updateData)
+      .eq('id', accountId);
+    
+    if (error) {
+      console.error('Failed to update account verification status:', error);
+      throw error;
+    }
+    
+    // Also store in validation history
+    if (status && verificationMessage) {
+      const historyEntry = {
+        account_id: accountId,
+        validation_status: status,
+        validation_message: verificationMessage,
+        duration_ms: durationMs || 0,
+        validated_by: 'system',
+        validated_at: verifiedAt || new Date().toISOString()
+      };
+      
+      const { error: historyError } = await supabase
+        .from('account_validation_history')
+        .insert([historyEntry]);
+      
+      if (historyError) {
+        console.error('Failed to store validation history:', historyError);
+        // Don't throw - main update succeeded
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error updating account verification status:', error);
+    throw error;
+  }
+}
+
+export async function getAccountVerificationStatistics() {
+  try {
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select('last_validation_status, status');
+    
+    if (error) throw error;
+    
+    const stats = {
+      total: data.length,
+      verified: 0,
+      failed: 0,
+      pending: 0,
+      never_validated: 0,
+      by_account_status: {},
+      by_validation_status: {}
+    };
+    
+    data.forEach(account => {
+      // Count by validation status
+      const validationStatus = account.last_validation_status || 'never_validated';
+      stats.by_validation_status[validationStatus] = (stats.by_validation_status[validationStatus] || 0) + 1;
+      
+      // Count by account status
+      const accountStatus = account.status || 'unknown';
+      stats.by_account_status[accountStatus] = (stats.by_account_status[accountStatus] || 0) + 1;
+      
+      // Count main categories
+      if (validationStatus === 'verified') stats.verified++;
+      else if (validationStatus === 'invalid' || validationStatus === 'failed') stats.failed++;
+      else if (validationStatus === 'pending') stats.pending++;
+      else stats.never_validated++;
+    });
+    
+    return stats;
+    
+  } catch (error) {
+    console.error('Error getting account verification statistics:', error);
+    return {
+      total: 0,
+      verified: 0,
+      failed: 0,
+      pending: 0,
+      never_validated: 0,
+      by_account_status: {},
+      by_validation_status: {}
+    };
+  }
+}
+
+export async function createAuditLog({ userId, action, resource, metadata }) {
+  try {
+    const auditEntry = {
+      user_id: userId === 'system' ? null : userId,
+      action,
+      resource,
+      metadata: metadata || {},
+      created_at: new Date().toISOString()
+    };
+    
+    const { error } = await supabase
+      .from('audit_logs')
+      .insert([auditEntry]);
+    
+    if (error) {
+      console.error('Failed to create audit log:', error);
+      // Don't throw - this shouldn't stop the main operation
+    }
+    
+  } catch (error) {
+    console.error('Error creating audit log:', error);
+  }
 }

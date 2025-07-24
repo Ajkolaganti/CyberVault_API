@@ -15,6 +15,7 @@ import { auditLogger } from './middlewares/auditLogger.js';
 import { requestLogger } from './middlewares/requestLogger.js';
 import { corsLogger, securityLogger } from './middlewares/endpointLogger.js';
 import jitCleanupJob from './jobs/jitCleanupJob.js';
+import verifyAccountsJob from './jobs/verifyAccountsJob.js';
 import { CPMService } from './cpm/services/CPMService.js';
 import { CPMConfig } from './cpm/config/cpmConfig.js';
 
@@ -75,11 +76,25 @@ app.set('trust proxy', true);
 
 app.use(express.json({ limit: '10kb' }));
 
+// Configure rate limiting based on environment
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // Higher limit for development
   standardHeaders: true,
   legacyHeaders: false,
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: Math.round(15 * 60) // 15 minutes in seconds
+  },
+  // Skip rate limiting for certain IPs in development
+  skip: (req) => {
+    if (process.env.NODE_ENV !== 'production') {
+      // Skip rate limiting for localhost/development IPs
+      const devIPs = ['127.0.0.1', '::1', 'localhost'];
+      return devIPs.includes(req.ip) || devIPs.includes(req.connection.remoteAddress);
+    }
+    return false;
+  }
 });
 app.use(limiter);
 
@@ -102,6 +117,9 @@ app.use(errorHandler);
 // Start the JIT cleanup background job
 jitCleanupJob.start();
 
+// Start the account verification background job
+verifyAccountsJob.start();
+
 // Start the CPM service for credential verification
 let cpmService;
 async function startCPMService() {
@@ -123,5 +141,6 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, async () => {
   logger.info(`Server listening on port ${PORT}`);
   logger.info('JIT cleanup background job started');
+  logger.info('Account verification background job started');
   await startCPMService();
 });

@@ -87,4 +87,47 @@ export async function deleteCredential({ id, userId, role }) {
   const { data, error } = await query;
   if (error) throw error;
   return data;
+}
+
+export async function findCredentialsByHostAndUser({ host, username, ownerId }) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from(TABLE)
+      .select('*')
+      .eq('host', host)
+      .eq('username', username)
+      .eq('user_id', ownerId);
+    
+    if (error) throw error;
+    
+    return (data || []).map(credential => ({
+      ...credential,
+      password: decrypt(credential.value) // Decrypt the password
+    }));
+    
+  } catch (error) {
+    console.error('Error finding credentials by host and user:', error);
+    return [];
+  }
+}
+
+export async function findCredentialsByHost({ host, ownerId }) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from(TABLE)
+      .select('*')
+      .eq('host', host)
+      .eq('user_id', ownerId);
+    
+    if (error) throw error;
+    
+    return (data || []).map(credential => ({
+      ...credential,
+      password: decrypt(credential.value) // Decrypt the password
+    }));
+    
+  } catch (error) {
+    console.error('Error finding credentials by host:', error);
+    return [];
+  }
 } 

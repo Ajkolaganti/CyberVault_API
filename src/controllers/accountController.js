@@ -264,3 +264,42 @@ export async function rotationHistory(req, res, next) {
     next(err);
   }
 }
+
+export async function validateAccount(req, res, next) {
+  try {
+    console.log(`Validating account ${req.params.id} for user ${req.user.email}`);
+    
+    const result = await accountService.validateAccountCredentials({
+      id: req.params.id,
+      ownerId: req.user.id,
+      role: req.user.role,
+      force: req.body.force || false
+    });
+    
+    res.json({
+      success: true,
+      message: 'Account validation completed',
+      data: result
+    });
+  } catch (err) {
+    console.error('Account validation failed:', err);
+    next(err);
+  }
+}
+
+export async function getValidationHistory(req, res, next) {
+  try {
+    const history = await accountService.getValidationHistory({
+      accountId: req.params.id,
+      ownerId: req.user.id,
+      role: req.user.role
+    });
+    
+    res.json({
+      data: history,
+      count: history.length
+    });
+  } catch (err) {
+    next(err);
+  }
+}

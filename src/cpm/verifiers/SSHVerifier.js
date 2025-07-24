@@ -219,6 +219,178 @@ export class SSHVerifier {
   }
   
   /**
+   * Verify if a specific user account exists on the Linux/Unix system
+   */
+  async verifyAccountExists(credentialData) {
+    let ssh = null;
+    
+    try {
+      logger.debug(`Verifying account existence: ${credentialData.target_username} on ${credentialData.target_hostname}`);
+      
+      // Create SSH configuration
+      const sshConfig = {
+        host: credentialData.host || credentialData.target_hostname,
+        port: credentialData.port || 22,
+        username: credentialData.username,
+        tryKeyboard: true
+      };
+      
+      // Add authentication method
+      if (credentialData.privateKey) {
+        sshConfig.privateKey = credentialData.privateKey;
+        if (credentialData.passphrase) {
+          sshConfig.passphrase = credentialData.passphrase;
+        }
+      } else if (credentialData.password) {
+        sshConfig.password = credentialData.password;
+      } else {
+        throw new Error('No authentication method provided');
+      }
+      
+      logger.debug(`Attempting SSH connection to verify account: ${credentialData.target_username}@${sshConfig.host}:${sshConfig.port}`);
+      
+      // Create SSH connection
+      ssh = new NodeSSH();
+      
+      // Attempt connection with timeout
+      const connectionPromise = ssh.connect(sshConfig);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('SSH connection timeout')), this.timeout);
+      });
+      
+      await Promise.race([connectionPromise, timeoutPromise]);
+      
+      // Try multiple commands to verify account existence
+      const verificationCommands = [
+        `id ${credentialData.target_username}`,                    // Primary: Get user ID info
+        `getent passwd ${credentialData.target_username}`,         // Secondary: Check passwd database
+        `grep "^${credentialData.target_username}:" /etc/passwd`   // Fallback: Direct passwd file check
+      ];
+      
+      let accountFound = false;
+      let lastError = null;
+      let verificationDetails = [];
+      
+      for (const command of verificationCommands) {
+        try {
+          logger.debug(`Running account verification command: ${command}`);
+          
+          const result = await ssh.execCommand(command, {
+            execOptions: {
+              timeout: 10000 // 10 second timeout for each command
+            }
+          });
+          
+          verificationDetails.push({
+            command,
+            exitCode: result.code,
+            stdout: result.stdout,
+            stderr: result.stderr
+          });
+          
+          if (result.code === 0 && result.stdout.trim()) {
+            // Account found!
+            accountFound = true;
+            logger.info(`✅ Account ${credentialData.target_username} found on ${credentialData.target_hostname} via: ${command}`);
+            break;
+          } else if (result.code === 1 || result.stderr.includes('no such user')) {
+            // Account not found, but this is expected - continue with next command
+            logger.debug(`Account ${credentialData.target_username} not found via: ${command}`);
+          } else {
+            // Unexpected error
+            lastError = `Command failed: ${command} (exit code: ${result.code}, stderr: ${result.stderr})`;
+            logger.warn(lastError);
+          }
+          
+        } catch (cmdError) {
+          lastError = `Command execution failed: ${command} - ${cmdError.message}`;
+          logger.warn(lastError);
+          verificationDetails.push({
+            command,
+            error: cmdError.message
+          });
+        }
+      }
+      
+      await ssh.dispose();
+      
+      if (accountFound) {
+        return {
+          success: true,
+          message: `Account '${credentialData.target_username}' verified successfully on ${credentialData.target_hostname}`,
+          details: {
+            verification_type: 'account_existence',
+            target_username: credentialData.target_username,
+            target_hostname: credentialData.target_hostname,
+            verification_commands: verificationDetails
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: `Account '${credentialData.target_username}' not found on ${credentialData.target_hostname}`,
+          error_category: 'account_not_found',
+          details: {
+            verification_type: 'account_existence',
+            target_username: credentialData.target_username,
+            target_hostname: credentialData.target_hostname,
+            verification_commands: verificationDetails,
+            last_error: lastError
+          }
+        };
+      }
+      
+    } catch (error) {
+      if (ssh) {
+        try {
+          await ssh.dispose();
+        } catch (disposeError) {
+          logger.warn('Failed to dispose SSH connection:', disposeError);
+        }
+      }
+      
+      logger.error(`SSH account verification failed for ${credentialData.target_username}@${credentialData.target_hostname}:`, error);
+      
+      return {
+        success: false,
+        message: `Account verification failed: ${error.message}`,
+        error_category: this.categorizeError(error),
+        details: {
+          verification_type: 'account_existence',
+          target_username: credentialData.target_username,
+          target_hostname: credentialData.target_hostname,
+          connection_host: credentialData.host,
+          connection_port: credentialData.port,
+          connection_username: credentialData.username
+        }
+      };
+    }
+  }
+
+  /**
+   * Categorize SSH verification errors
+   */
+  categorizeError(error) {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('timeout') || message.includes('etimedout')) {
+      return 'timeout';
+    } else if (message.includes('econnrefused')) {
+      return 'connection_refused';
+    } else if (message.includes('enotfound') || message.includes('enoent')) {
+      return 'host_not_found';
+    } else if (message.includes('authentication') || message.includes('auth')) {
+      return 'authentication';
+    } else if (message.includes('permission denied')) {
+      return 'permission_denied';
+    } else if (message.includes('key')) {
+      return 'key_error';
+    } else {
+      return 'unknown';
+    }
+  }
+
+  /**
    * Generate test SSH credential for development
    * @returns {Object} Test credential
    */

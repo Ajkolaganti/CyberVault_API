@@ -12,6 +12,8 @@ import dashboardRoutes from './dashboardRoutes.js';
 import accountRoutes from './accountRoutes.js';
 import safeRoutes from './safeRoutes.js';
 import cpmRoutes from './cpmRoutes.js';
+import userRoutes from './userRoutes.js';
+import validationRoutes from './validationRoutes.js';
 
 
 const router = Router();
@@ -29,6 +31,8 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/accounts', accountRoutes);
 router.use('/safes', safeRoutes);
 router.use('/cpm', cpmRoutes);
+router.use('/user', userRoutes);
+router.use('/validation', validationRoutes);
 // TODO: add credential, JIT access, discovery, session, policy routes
 
 export default router; 

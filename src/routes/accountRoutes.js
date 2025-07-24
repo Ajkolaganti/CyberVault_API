@@ -184,4 +184,10 @@ router.post('/:id/rotate', accountController.rotatePassword);
 // Get rotation history
 router.get('/:id/history', accountController.rotationHistory);
 
+// Validate account credentials (test connectivity)
+router.post('/:id/validate', accountController.validateAccount);
+
+// Get validation history
+router.get('/:id/validation-history', accountController.getValidationHistory);
+
 export default router;

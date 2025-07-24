@@ -86,6 +86,102 @@ export class CPMService {
   }
   
   /**
+   * Verify if an account exists on a target system
+   */
+  async verifyAccountExistence(credentialData) {
+    const startTime = Date.now();
+    
+    try {
+      logger.debug(`Starting account existence verification: ${credentialData.target_username}@${credentialData.target_hostname}`);
+      
+      // Get appropriate verifier based on credential type
+      let verifier = this.verifiers[credentialData.type];
+      
+      // Fallback mappings for common cases
+      if (!verifier) {
+        switch (credentialData.type) {
+          case 'password':
+            // Default to Windows verifier for password type
+            verifier = this.verifiers.windows;
+            break;
+          default:
+            break;
+        }
+      }
+      
+      if (!verifier) {
+        throw new Error(`No verifier available for credential type '${credentialData.type}'`);
+      }
+      
+      // Check if verifier supports account existence verification
+      if (!verifier.verifyAccountExists) {
+        throw new Error(`Verifier for type '${credentialData.type}' does not support account existence verification`);
+      }
+      
+      // Perform account existence verification with timeout
+      const verificationPromise = verifier.verifyAccountExists(credentialData);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Account verification timeout')), this.config.get('verificationTimeout'));
+      });
+      
+      const verificationResult = await Promise.race([verificationPromise, timeoutPromise]);
+      
+      // Update metrics
+      this.metrics.credentialsVerified++;
+      if (verificationResult.success) {
+        this.metrics.verificationSuccesses++;
+      } else {
+        this.metrics.verificationFailures++;
+      }
+      
+      // Calculate verification time
+      const verificationTime = Date.now() - startTime;
+      this.metrics.averageVerificationTime = Math.round(
+        (this.metrics.averageVerificationTime * (this.metrics.credentialsVerified - 1) + verificationTime) / 
+        this.metrics.credentialsVerified
+      );
+      
+      // Log audit event
+      await this.auditLogger.logAccountVerificationAudit(credentialData, verificationResult);
+      
+      const duration = Date.now() - startTime;
+      
+      return {
+        credential: credentialData,
+        verificationResult,
+        duration,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      logger.error(`Account existence verification failed for ${credentialData.target_username}:`, error);
+      
+      this.metrics.verificationFailures++;
+      
+      const duration = Date.now() - startTime;
+      const verificationResult = {
+        success: false,
+        message: error.message,
+        error_category: this.categorizeError(error),
+        details: {
+          target_username: credentialData.target_username,
+          target_hostname: credentialData.target_hostname,
+          verification_type: 'account_existence'
+        }
+      };
+      
+      return {
+        credential: credentialData,
+        verificationResult,
+        duration,
+        startTime: new Date(startTime).toISOString(),
+        endTime: new Date().toISOString()
+      };
+    }
+  }
+
+  /**
    * Stop the CPM service
    */
   async stop() {
@@ -449,6 +545,33 @@ export class CPMService {
     };
   }
   
+  /**
+   * Categorize error types for better error handling
+   * @param {Error} error - Error to categorize
+   * @returns {string} Error category
+   */
+  categorizeError(error) {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('timeout') || message.includes('etimedout')) {
+      return 'timeout';
+    } else if (message.includes('econnrefused')) {
+      return 'connection_refused';
+    } else if (message.includes('enotfound')) {
+      return 'host_not_found';
+    } else if (message.includes('authentication') || message.includes('auth')) {
+      return 'authentication';
+    } else if (message.includes('permission') || message.includes('access_denied')) {
+      return 'permission_denied';
+    } else if (message.includes('network') || message.includes('connection')) {
+      return 'network_error';
+    } else if (message.includes('verifier') || message.includes('no verifier')) {
+      return 'configuration_error';
+    } else {
+      return 'system_error';
+    }
+  }
+
   /**
    * Get service status
    * @returns {Object} Service status

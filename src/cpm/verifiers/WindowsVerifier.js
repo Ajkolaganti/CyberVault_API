@@ -453,6 +453,293 @@ export class WindowsVerifier {
   }
   
   /**
+   * Verify if a specific user account exists on the Windows system
+   */
+  async verifyAccountExists(credentialData) {
+    try {
+      logger.debug(`Verifying Windows account existence: ${credentialData.target_username} on ${credentialData.target_hostname}`);
+      
+      const config = this.parseCredentialValue(credentialData.value);
+      const host = credentialData.host || credentialData.target_hostname;
+      const port = credentialData.port || config.port || 5985; // Default WinRM port
+      const username = credentialData.username;
+      const password = credentialData.password || config.password;
+      const domain = config.domain;
+      
+      // Try multiple Windows account verification methods
+      const verificationMethods = ['winrm', 'smb', 'rdp'];
+      let accountFound = false;
+      let lastError = null;
+      let verificationDetails = [];
+      
+      for (const method of verificationMethods) {
+        try {
+          logger.debug(`Attempting Windows account verification via ${method}`);
+          
+          let result;
+          switch (method) {
+            case 'winrm':
+              result = await this.verifyAccountViaWinRM(host, port, username, password, domain, credentialData.target_username);
+              break;
+            case 'smb':
+              result = await this.verifyAccountViaSMB(host, username, password, domain, credentialData.target_username);
+              break;
+            case 'rdp':
+              result = await this.verifyAccountViaRDP(host, 3389, username, password, domain, credentialData.target_username);
+              break;
+          }
+          
+          verificationDetails.push({
+            method,
+            success: result.success,
+            message: result.message,
+            details: result.details || {}
+          });
+          
+          if (result.success) {
+            accountFound = true;
+            logger.info(`✅ Account ${credentialData.target_username} found on ${credentialData.target_hostname} via: ${method}`);
+            break;
+          } else {
+            lastError = result.message;
+            logger.debug(`Account verification failed via ${method}: ${result.message}`);
+          }
+          
+        } catch (methodError) {
+          lastError = `${method} verification failed: ${methodError.message}`;
+          logger.warn(lastError);
+          verificationDetails.push({
+            method,
+            success: false,
+            error: methodError.message
+          });
+        }
+      }
+      
+      if (accountFound) {
+        return {
+          success: true,
+          message: `Account '${credentialData.target_username}' verified successfully on ${credentialData.target_hostname}`,
+          details: {
+            verification_type: 'account_existence',
+            target_username: credentialData.target_username,
+            target_hostname: credentialData.target_hostname,
+            verification_methods: verificationDetails
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: `Account '${credentialData.target_username}' not found on ${credentialData.target_hostname}`,
+          error_category: 'account_not_found',
+          details: {
+            verification_type: 'account_existence',
+            target_username: credentialData.target_username,
+            target_hostname: credentialData.target_hostname,
+            verification_methods: verificationDetails,
+            last_error: lastError
+          }
+        };
+      }
+      
+    } catch (error) {
+      logger.error(`Windows account verification failed for ${credentialData.target_username}@${credentialData.target_hostname}:`, error);
+      
+      return {
+        success: false,
+        message: `Account verification failed: ${error.message}`,
+        error_category: this.categorizeError(error),
+        details: {
+          verification_type: 'account_existence',
+          target_username: credentialData.target_username,
+          target_hostname: credentialData.target_hostname
+        }
+      };
+    }
+  }
+
+  /**
+   * Verify account existence via WinRM using PowerShell commands
+   */
+  async verifyAccountViaWinRM(host, port, username, password, domain, targetUsername) {
+    try {
+      // PowerShell commands to check for user account
+      const verificationCommands = [
+        `net user ${targetUsername}`,                                    // Primary: Check local user
+        `Get-LocalUser -Name "${targetUsername}" -ErrorAction Stop`,    // PowerShell: Get local user
+        `Get-WmiObject -Class Win32_UserAccount -Filter "Name='${targetUsername}'"` // WMI: Check user account
+      ];
+      
+      for (const command of verificationCommands) {
+        try {
+          logger.debug(`Running Windows account verification command: ${command}`);
+          
+          // Use PowerShell remoting to execute the command
+          const psCommand = domain 
+            ? `powershell -Command "Invoke-Command -ComputerName ${host} -Credential (New-Object System.Management.Automation.PSCredential('${domain}\\${username}', (ConvertTo-SecureString '${password}' -AsPlainText -Force))) -ScriptBlock { ${command} }"`
+            : `powershell -Command "Invoke-Command -ComputerName ${host} -Credential (New-Object System.Management.Automation.PSCredential('${username}', (ConvertTo-SecureString '${password}' -AsPlainText -Force))) -ScriptBlock { ${command} }"`;
+          
+          const output = await execAsync(psCommand, { timeout: 15000 });
+          
+          // Check if the command succeeded and returned user information
+          if (output.toLowerCase().includes(targetUsername.toLowerCase()) || 
+              output.includes('The command completed successfully')) {
+            return {
+              success: true,
+              message: `Account found via WinRM: ${command}`,
+              details: { command, output: output.substring(0, 200) }
+            };
+          }
+          
+        } catch (cmdError) {
+          logger.debug(`WinRM command failed: ${command} - ${cmdError.message}`);
+          // Continue with next command
+        }
+      }
+      
+      return {
+        success: false,
+        message: 'Account not found via WinRM',
+        details: { method: 'winrm' }
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        message: `WinRM verification failed: ${error.message}`,
+        details: { method: 'winrm', error: error.message }
+      };
+    }
+  }
+
+  /**
+   * Verify account existence via SMB by checking user profiles
+   */
+  async verifyAccountViaSMB(host, username, password, domain, targetUsername) {
+    try {
+      const smbCredentials = domain ? `${domain}\\${username}%${password}` : `${username}%${password}`;
+      
+      // Try to list user profiles directory
+      const command = `smbclient //${host}/c$ -U "${smbCredentials}" -c "ls Users\\${targetUsername}"`;
+      
+      const output = await execAsync(command, { timeout: 10000 });
+      
+      if (output.includes('NT_STATUS_OK') || output.includes('listing')) {
+        return {
+          success: true,
+          message: `Account profile found via SMB`,
+          details: { method: 'smb', profile_path: `Users\\${targetUsername}` }
+        };
+      } else {
+        return {
+          success: false,
+          message: 'Account profile not found via SMB',
+          details: { method: 'smb' }
+        };
+      }
+      
+    } catch (error) {
+      return {
+        success: false,
+        message: `SMB verification failed: ${error.message}`,
+        details: { method: 'smb', error: error.message }
+      };
+    }
+  }
+
+  /**
+   * Verify account existence via RDP connection attempt
+   */
+  async verifyAccountViaRDP(host, port, username, password, domain, targetUsername) {
+    try {
+      // For RDP, we can try to connect with the target username to see if it exists
+      const rdpUser = domain ? `${domain}\\${targetUsername}` : targetUsername;
+      
+      // Use a quick RDP connection test
+      const command = `xfreerdp /u:"${rdpUser}" /p:"dummy_password" /v:${host}:${port || 3389} +auth-only /sec:tls /cert-ignore /timeout:5000`;
+      
+      const output = await execAsync(command, { timeout: 8000 });
+      
+      // If we get authentication failure but the user exists, that's what we want
+      if (output.includes('Authentication failure') || output.includes('invalid credentials')) {
+        return {
+          success: true,
+          message: `Account exists (authentication failed as expected)`,
+          details: { method: 'rdp', note: 'Account exists but password incorrect' }
+        };
+      } else if (output.includes('account does not exist') || output.includes('user not found')) {
+        return {
+          success: false,
+          message: 'Account not found via RDP',
+          details: { method: 'rdp' }
+        };
+      } else {
+        return {
+          success: false,
+          message: 'RDP verification inconclusive',
+          details: { method: 'rdp', output: output.substring(0, 100) }
+        };
+      }
+      
+    } catch (error) {
+      // Check if error indicates user doesn't exist vs other issues
+      if (error.message.includes('account does not exist') || error.message.includes('user not found')) {
+        return {
+          success: false,
+          message: 'Account not found via RDP',
+          details: { method: 'rdp' }
+        };
+      } else {
+        return {
+          success: false,
+          message: `RDP verification failed: ${error.message}`,
+          details: { method: 'rdp', error: error.message }
+        };
+      }
+    }
+  }
+
+  /**
+   * Parse credential value to extract connection config
+   */
+  parseCredentialValue(credentialValue) {
+    try {
+      const decryptedValue = decrypt(credentialValue);
+      try {
+        return JSON.parse(decryptedValue);
+      } catch {
+        // Plain password format
+        return {
+          password: decryptedValue
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to parse credential value: ${error.message}`);
+    }
+  }
+
+  /**
+   * Categorize Windows verification errors
+   */
+  categorizeError(error) {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('timeout') || message.includes('etimedout')) {
+      return 'timeout';
+    } else if (message.includes('econnrefused')) {
+      return 'connection_refused';
+    } else if (message.includes('enotfound')) {
+      return 'host_not_found';
+    } else if (message.includes('authentication') || message.includes('logon_failure')) {
+      return 'authentication';
+    } else if (message.includes('access_denied') || message.includes('permission')) {
+      return 'permission_denied';
+    } else {
+      return 'unknown';
+    }
+  }
+
+  /**
    * Check if Windows verification tools are available
    */
   static async checkDependencies() {
