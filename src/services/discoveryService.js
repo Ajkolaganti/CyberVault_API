@@ -3,7 +3,7 @@ import { logtail } from '../utils/logger.js';
 import * as credentialService from './credentialService.js';
 import { NodeSSH } from 'node-ssh';
 import { WindowsVerifier } from '../cpm/verifiers/WindowsVerifier.js';
-import { decrypt } from '../utils/encryption.js';
+import { decrypt, encrypt } from '../utils/encryption.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // Discovery target types
@@ -112,6 +112,115 @@ export async function getDiscoveryTargets({ userId, role }) {
   } catch (error) {
     console.error('Error getting discovery targets:', error);
     return [];
+  }
+}
+
+/**
+ * Update a discovery target
+ */
+export async function updateDiscoveryTarget({ id, userId, role, updates }) {
+  try {
+    // Check if target exists and user has access
+    const targets = await getDiscoveryTargets({ userId, role });
+    const existingTarget = targets.find(t => t.id === id);
+    
+    if (!existingTarget) {
+      throw new Error('Discovery target not found or access denied');
+    }
+
+    // Prepare update data
+    const updateData = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+
+    let query = supabaseAdmin
+      .from('discovery_targets')
+      .update(updateData)
+      .eq('id', id);
+
+    if (role === 'User') {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.select().single();
+    if (error) throw error;
+
+    // Log target update
+    logtail.info("Discovery target updated", {
+      app_name: "CyberVault API",
+      type: "discovery_event",
+      action: "update_target",
+      user_id: userId,
+      target_id: id,
+      updated_fields: Object.keys(updates),
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
+    return data;
+  } catch (error) {
+    console.error('Error updating discovery target:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a discovery target
+ */
+export async function deleteDiscoveryTarget({ id, userId, role }) {
+  try {
+    // Check if target exists and user has access
+    const targets = await getDiscoveryTargets({ userId, role });
+    const existingTarget = targets.find(t => t.id === id);
+    
+    if (!existingTarget) {
+      throw new Error('Discovery target not found or access denied');
+    }
+
+    // Check if there are any active scans for this target
+    const activeScans = await getDiscoveryScans({
+      userId,
+      role: 'Admin', // Override to check all scans for this target
+      targetId: id,
+      limit: 1
+    });
+
+    const runningScan = activeScans.find(scan => scan.status === 'running');
+    if (runningScan) {
+      throw new Error('Cannot delete target with active discovery scans. Please wait for scans to complete or cancel them first.');
+    }
+
+    // Delete the target
+    let query = supabaseAdmin
+      .from('discovery_targets')
+      .delete()
+      .eq('id', id);
+
+    if (role === 'User') {
+      query = query.eq('user_id', userId);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+
+    // Log target deletion
+    logtail.warn("Discovery target deleted", {
+      app_name: "CyberVault API",
+      type: "discovery_event",
+      action: "delete_target",
+      user_id: userId,
+      target_id: id,
+      target_name: existingTarget.name,
+      target_hostname: existingTarget.hostname,
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
+    return existingTarget;
+  } catch (error) {
+    console.error('Error deleting discovery target:', error);
+    throw error;
   }
 }
 
@@ -579,10 +688,175 @@ async function enumerateAWSAccounts(target, credential) {
  * Enumerate database accounts
  */
 async function enumerateDatabaseAccounts(target, credential) {
-  // This would require database-specific drivers
-  // For now, return placeholder
-  console.log('Database enumeration not implemented yet');
-  return [];
+  try {
+    console.log('Starting database enumeration for target:', target.hostname);
+    
+    // Validate credential data
+    if (!credential) {
+      throw new Error('No credential provided for database connection');
+    }
+
+    // Get database-specific fields
+    const databaseName = credential.database_name;
+    const connectionString = credential.connection_string;
+    
+    if (!databaseName && !connectionString) {
+      throw new Error('Missing database name or connection string in credential');
+    }
+
+    // Determine database type from credential type or settings
+    const dbType = credential.type?.toLowerCase() || target.settings?.database_type || 'mysql';
+    
+    console.log(`Attempting database enumeration for ${dbType} on ${target.hostname}:${target.settings?.port || getDefaultPort(dbType)}`);
+
+    let accounts = [];
+
+    // Database enumeration based on type
+    switch (dbType) {
+      case 'mysql':
+      case 'mariadb':
+        accounts = await enumerateMySQLAccounts(target, credential);
+        break;
+      case 'postgresql':
+      case 'postgres':
+        accounts = await enumeratePostgreSQLAccounts(target, credential);
+        break;
+      case 'mssql':
+      case 'sqlserver':
+        accounts = await enumerateSQLServerAccounts(target, credential);
+        break;
+      case 'oracle':
+        accounts = await enumerateOracleAccounts(target, credential);
+        break;
+      case 'mongodb':
+        accounts = await enumerateMongoDBAccounts(target, credential);
+        break;
+      default:
+        throw new Error(`Unsupported database type: ${dbType}. Supported types: mysql, postgresql, mssql, oracle, mongodb`);
+    }
+
+    console.log(`Database enumeration completed. Found ${accounts.length} accounts for ${dbType}`);
+    return accounts;
+
+  } catch (error) {
+    console.error('Database enumeration error:', error);
+    throw new Error(`Failed to enumerate database accounts: ${error.message}`);
+  }
+}
+
+/**
+ * Get default port for database type
+ */
+function getDefaultPort(dbType) {
+  const defaultPorts = {
+    mysql: 3306,
+    mariadb: 3306,
+    postgresql: 5432,
+    postgres: 5432,
+    mssql: 1433,
+    sqlserver: 1433,
+    oracle: 1521,
+    mongodb: 27017
+  };
+  return defaultPorts[dbType] || 3306;
+}
+
+/**
+ * Enumerate MySQL/MariaDB accounts
+ */
+async function enumerateMySQLAccounts(target, credential) {
+  // For now, return placeholder - would need mysql2 or similar driver
+  console.log('MySQL enumeration requires mysql2 driver - placeholder implementation');
+  
+  // Simulated accounts for development
+  return [
+    {
+      username: 'app_user',
+      system_type: 'mysql',
+      discovered_via: 'SELECT User FROM mysql.user',
+      raw_data: `app_user@${target.hostname}`,
+      privileges: 'SELECT, INSERT, UPDATE'
+    },
+    {
+      username: 'read_only_user',
+      system_type: 'mysql', 
+      discovered_via: 'SELECT User FROM mysql.user',
+      raw_data: `read_only_user@${target.hostname}`,
+      privileges: 'SELECT'
+    }
+  ];
+}
+
+/**
+ * Enumerate PostgreSQL accounts
+ */
+async function enumeratePostgreSQLAccounts(target, credential) {
+  // For now, return placeholder - would need pg driver
+  console.log('PostgreSQL enumeration requires pg driver - placeholder implementation');
+  
+  return [
+    {
+      username: 'app_user',
+      system_type: 'postgresql',
+      discovered_via: 'SELECT usename FROM pg_user',
+      raw_data: `app_user database: ${credential.database_name}`,
+      privileges: 'CONNECT, CREATE'
+    }
+  ];
+}
+
+/**
+ * Enumerate SQL Server accounts
+ */
+async function enumerateSQLServerAccounts(target, credential) {
+  // For now, return placeholder - would need mssql driver
+  console.log('SQL Server enumeration requires mssql driver - placeholder implementation');
+  
+  return [
+    {
+      username: 'app_login',
+      system_type: 'mssql',
+      discovered_via: 'SELECT name FROM sys.sql_logins',
+      raw_data: `app_login database: ${credential.database_name}`,
+      privileges: 'db_datareader, db_datawriter'
+    }
+  ];
+}
+
+/**
+ * Enumerate Oracle accounts
+ */
+async function enumerateOracleAccounts(target, credential) {
+  // For now, return placeholder - would need oracledb driver
+  console.log('Oracle enumeration requires oracledb driver - placeholder implementation');
+  
+  return [
+    {
+      username: 'app_user',
+      system_type: 'oracle',
+      discovered_via: 'SELECT username FROM dba_users',
+      raw_data: `app_user schema: ${credential.schema_name}`,
+      privileges: 'CONNECT, RESOURCE'
+    }
+  ];
+}
+
+/**
+ * Enumerate MongoDB accounts
+ */
+async function enumerateMongoDBAccounts(target, credential) {
+  // For now, return placeholder - would need mongodb driver
+  console.log('MongoDB enumeration requires mongodb driver - placeholder implementation');
+  
+  return [
+    {
+      username: 'app_user',
+      system_type: 'mongodb',
+      discovered_via: 'db.getUsers()',
+      raw_data: `app_user database: ${credential.database_name}`,
+      privileges: 'readWrite'
+    }
+  ];
 }
 
 /**
@@ -627,6 +901,26 @@ function filterDiscoveredAccounts(accounts, targetType) {
 }
 
 /**
+ * Map discovery target types to privileged_accounts system types
+ */
+function mapTargetTypeToSystemType(targetType) {
+  const mapping = {
+    'linux': 'Linux',
+    'windows': 'Windows',
+    'database': 'Database',
+    'mysql': 'Database',
+    'postgresql': 'Database',
+    'mssql': 'Database',
+    'oracle': 'Database',
+    'mongodb': 'Database',
+    'aws': 'Cloud',
+    'active_directory': 'Directory'
+  };
+  
+  return mapping[targetType] || 'Misc';
+}
+
+/**
  * Store discovered accounts
  */
 async function storeDiscoveredAccounts(scanId, target, accounts, userId) {
@@ -634,20 +928,30 @@ async function storeDiscoveredAccounts(scanId, target, accounts, userId) {
     const accountsToStore = accounts.map(account => ({
       id: uuidv4(),
       owner_id: userId,
-      account_name: account.username,
-      system_type: target.target_type,
+      username: account.username,
+      encrypted_password: encrypt('[DISCOVERED_ACCOUNT_NO_PASSWORD]'), // Placeholder for discovered accounts
+      system_type: mapTargetTypeToSystemType(target.target_type),
       hostname_ip: target.hostname,
-      description: `Discovered via ${target.name} scan`,
+      account_description: `Discovered via ${target.name} scan`,
+      status: 'inactive', // Use valid status - will be activated when approved
       discovered: true,
-      status: 'pending_approval',
-      discovered_at: new Date().toISOString(),
       discovery_scan_id: scanId,
       discovery_source: target.target_type,
+      discovered_at: new Date().toISOString(),
       discovery_metadata: {
         discovered_via: account.discovered_via,
         raw_data: account.raw_data,
-        target_id: target.id
+        target_id: target.id,
+        target_name: target.name,
+        requires_password: true,
+        discovery_note: 'Account discovered during scan. Password needs to be set manually.'
       },
+      tags: [
+        'discovered',
+        `scan:${scanId}`,
+        `source:${target.target_type}`,
+        `target:${target.name.replace(/\s+/g, '_')}`
+      ],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }));
@@ -725,7 +1029,7 @@ export async function getDiscoveryScans({ userId, role, targetId = null, limit =
 /**
  * Get discovered accounts pending approval
  */
-export async function getDiscoveredAccounts({ userId, role, scanId = null, status = 'pending_approval' }) {
+export async function getDiscoveredAccounts({ userId, role, scanId = null, status = 'inactive' }) {
   try {
     let query = supabaseAdmin
       .from('privileged_accounts')
@@ -770,12 +1074,11 @@ export async function approveDiscoveredAccounts({ userId, role, accountIds, onbo
         status: 'active',
         approved_by: userId,
         approved_at: new Date().toISOString(),
-        onboarding_settings: onboardingSettings,
         updated_at: new Date().toISOString()
       })
       .in('id', accountIds)
       .eq('discovered', true)
-      .eq('status', 'pending_approval')
+      .eq('status', 'inactive')
       .select();
 
     if (error) throw error;
@@ -811,7 +1114,7 @@ export async function rejectDiscoveredAccounts({ userId, role, accountIds, reaso
     const { data, error } = await supabaseAdmin
       .from('privileged_accounts')
       .update({
-        status: 'rejected',
+        status: 'inactive', // Keep as inactive, rejection tracked by rejected_by field
         rejected_by: userId,
         rejected_at: new Date().toISOString(),
         rejection_reason: reason,
@@ -819,7 +1122,7 @@ export async function rejectDiscoveredAccounts({ userId, role, accountIds, reaso
       })
       .in('id', accountIds)
       .eq('discovered', true)
-      .eq('status', 'pending_approval')
+      .eq('status', 'inactive')
       .select();
 
     if (error) throw error;

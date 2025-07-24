@@ -75,6 +75,84 @@ export async function getTargetById(req, res, next) {
   }
 }
 
+export async function updateTarget(req, res, next) {
+  try {
+    const { name, description, targetType, hostname, connectionMethod, credentialId, settings } = req.body;
+
+    const updatedTarget = await discoveryService.updateDiscoveryTarget({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role,
+      updates: {
+        name,
+        description,
+        target_type: targetType,
+        hostname,
+        connection_method: connectionMethod,
+        credential_id: credentialId,
+        settings: settings || {}
+      }
+    });
+
+    // Log target update
+    logtail.info("Discovery target updated via API", {
+      app_name: "CyberVault API",
+      type: "discovery_event",
+      action: "api_update_target",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      target_id: req.params.id,
+      updated_fields: Object.keys(req.body),
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
+    res.json({
+      success: true,
+      data: updatedTarget,
+      message: 'Discovery target updated successfully'
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteTarget(req, res, next) {
+  try {
+    const deletedTarget = await discoveryService.deleteDiscoveryTarget({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role
+    });
+
+    // Log target deletion
+    logtail.warn("Discovery target deleted via API", {
+      app_name: "CyberVault API",
+      type: "discovery_event",
+      action: "api_delete_target",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      target_id: req.params.id,
+      target_name: deletedTarget.name,
+      target_hostname: deletedTarget.hostname,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
+    res.json({
+      success: true,
+      data: deletedTarget,
+      message: 'Discovery target deleted successfully'
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Discovery Scans Management
 export async function initiateDiscoveryScan(req, res, next) {
   try {
@@ -240,7 +318,7 @@ export async function getScanById(req, res, next) {
 // Discovered Accounts Management
 export async function listDiscoveredAccounts(req, res, next) {
   try {
-    const { scanId, status = 'pending_approval' } = req.query;
+    const { scanId, status = 'inactive' } = req.query;
 
     const accounts = await discoveryService.getDiscoveredAccounts({
       userId: req.user.id,
@@ -381,9 +459,9 @@ export async function getDiscoveryStatistics(req, res, next) {
       },
       discoveredAccounts: {
         total: discoveredAccounts.length,
-        pendingApproval: discoveredAccounts.filter(a => a.status === 'pending_approval').length,
+        pendingApproval: discoveredAccounts.filter(a => a.status === 'inactive' && a.discovered === true && !a.approved_by && !a.rejected_by).length,
         approved: discoveredAccounts.filter(a => a.status === 'active').length,
-        rejected: discoveredAccounts.filter(a => a.status === 'rejected').length
+        rejected: discoveredAccounts.filter(a => a.rejected_by !== null).length
       },
       systemBreakdown: {},
       recentActivity: scans.slice(0, 10)

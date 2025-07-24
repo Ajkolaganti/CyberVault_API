@@ -11,6 +11,8 @@ router.use(authenticate);
 router.post('/targets', discoveryController.createTarget);
 router.get('/targets', discoveryController.listTargets);
 router.get('/targets/:id', discoveryController.getTargetById);
+router.put('/targets/:id', discoveryController.updateTarget);
+router.delete('/targets/:id', discoveryController.deleteTarget);
 
 // Discovery Scans Endpoints
 router.post('/targets/:targetId/scan', discoveryController.initiateDiscoveryScan);

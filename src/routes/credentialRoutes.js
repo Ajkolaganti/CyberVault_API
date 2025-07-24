@@ -24,6 +24,8 @@ router.post(
 
 router.get('/', credentialController.list);
 router.get('/:id', credentialController.getById);
+router.get('/:id/history', credentialController.getHistory);
+router.post('/:id/verify', credentialController.verifyCredential);
 router.put('/:id', credentialController.update);
 router.delete('/:id', credentialController.remove);
 

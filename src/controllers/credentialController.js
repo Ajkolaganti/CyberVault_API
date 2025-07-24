@@ -3,7 +3,21 @@ import { logtail } from '../utils/logger.js';
 
 export async function create(req, res, next) {
   try {
-    const { type, name, value, password, host, port, username } = req.body;
+    const { 
+      type, 
+      name, 
+      value, 
+      password, 
+      host, 
+      port, 
+      username,
+      database_name,
+      schema_name,
+      connection_string,
+      ssl_enabled,
+      additional_params
+    } = req.body;
+    
     const secretValue = value || password;
     const credential = await credentialService.createCredential({
       userId: req.user.id,
@@ -12,7 +26,12 @@ export async function create(req, res, next) {
       value: secretValue,
       host,
       port,
-      username
+      username,
+      database_name,
+      schema_name,
+      connection_string,
+      ssl_enabled,
+      additional_params
     });
 
     // Log credential creation (without sensitive data)
@@ -109,6 +128,71 @@ export async function update(req, res, next) {
 
     res.json(credential);
   } catch (err) {
+    next(err);
+  }
+}
+
+export async function getHistory(req, res, next) {
+  try {
+    const history = await credentialService.getCredentialHistory({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role,
+    });
+
+    res.json({
+      success: true,
+      data: history
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyCredential(req, res, next) {
+  try {
+    const verificationResult = await credentialService.verifyCredential({
+      id: req.params.id,
+      userId: req.user.id,
+      role: req.user.role,
+    });
+
+    // Log verification attempt
+    logtail.info("Credential verification", {
+      app_name: "CyberVault API",
+      type: "credential_event",
+      action: "verify",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      credential_id: req.params.id,
+      verification_success: verificationResult.success,
+      verification_type: verificationResult.verificationType,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: true
+    });
+
+    res.json({
+      success: true,
+      data: verificationResult
+    });
+  } catch (err) {
+    // Log verification error
+    logtail.error("Credential verification failed", {
+      app_name: "CyberVault API",
+      type: "credential_event",
+      action: "verify_failed",
+      user_id: req.user.id,
+      user_role: req.user.role,
+      credential_id: req.params.id,
+      error_message: err.message,
+      ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      timestamp: new Date().toISOString(),
+      success: false
+    });
+
     next(err);
   }
 }
